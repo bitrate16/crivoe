@@ -1,19 +1,42 @@
 package scheduling
 
 type Task struct {
-	Url string `json:"url"`
+	// Type of the task, defines which worker to use
+	Type string `json:"type"`
+
+	// Task options based on worker requirements
+	Options interface{} `json:"options"`
 }
 
-// func NewTask() *Task {
-// 	return &Task{}
-// }
+// Pre defined status: undefined
+const TaskStatusUndefined = "UNDEFINED"
 
-// func SerializeTask(task *Task) ([]byte, error) {
-// 	return json.Marshal(*task)
-// }
+// Pre defined status: task completed
+const TaskStatusComplete = "COMPLETE"
 
-// func DeserializeTask(data []byte) (*Task, error) {
-// 	var task Task
-// 	err := json.Unmarshal(data, &task)
-// 	return &task, err
-// }
+// Pre defined status: task failed
+const TaskStatusFail = "FAIL"
+
+// Pre defined status: task finished with error. `Result` contains error
+const TaskStatusError = "ERROR"
+
+// Contains status returned by task
+type TaskStatus struct {
+	// Definitive status for task
+	Status string `json:"status"`
+
+	// Result of task, optional
+	Result interface{} `json:"result"`
+}
+
+// Callback must be called when task finishes
+type TaskCallback interface {
+	Done(status *TaskStatus)
+}
+
+// Anonymous function interface implementation
+type TaskCallbackHandler func(status *TaskStatus)
+
+func (tch TaskCallbackHandler) Done(status *TaskStatus) {
+	tch(status)
+}

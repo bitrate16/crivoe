@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	args := config.NewConfig()
+	args := config.GetConfig()
 
 	fmt.Printf("%v", args)
 }
