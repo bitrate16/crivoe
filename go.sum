@@ -1,5 +1,7 @@
 github.com/bitrate16/bloby v0.0.0-20240807230929-99b8fb1fdf04 h1:GDGFwYfdIX4IcJjbxE0hmBtMKcWa4kpotPJDgeDzvGg=
 github.com/bitrate16/bloby v0.0.0-20240807230929-99b8fb1fdf04/go.mod h1:2CxiMk5psnUDz4ivKaOiinbpFtAgXsFy2dxiSGZgVsM=
+github.com/bitrate16/bloby v0.0.0-20240807233513-a306fcc6ed4e h1:85IaqWVt7JUUCaDaHb+/uNb3eXa2Md6ZjYaJdgyd9V0=
+github.com/bitrate16/bloby v0.0.0-20240807233513-a306fcc6ed4e/go.mod h1:2CxiMk5psnUDz4ivKaOiinbpFtAgXsFy2dxiSGZgVsM=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o4kU=

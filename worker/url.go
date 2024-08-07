@@ -68,7 +68,7 @@ func (w *UrlWorker) Launch(task *scheduling.BasicTask, callback scheduling.Basic
 		metadata["options"] = task.Options
 		metadata["timestamp"] = timestamp
 		metadata["headers"] = headers
-		metadata["method"] = url
+		metadata["method"] = method
 		metadata["url"] = url
 		metadata["status"] = "undefined"
 
