@@ -16,7 +16,7 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
 func RandStringRunes(n int) string {
 	b := make([]rune, n)
