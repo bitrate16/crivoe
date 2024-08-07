@@ -1,14 +1,10 @@
-package scheduling
+package api
 
 import "time"
 
-// User-defined task specification
-type BasicTask struct {
+type HTTPTask struct {
 	// Worker type for this task
 	Type string `json:"type"`
-
-	// Assigned task ID
-	Id string `json:"id"`
 
 	// Max retries of the task
 	MaxRetries int `json:"max_retries"`
@@ -18,4 +14,8 @@ type BasicTask struct {
 
 	// Options fot the task
 	Options interface{} `json:"options"`
+}
+
+type HTTPJob struct {
+	Id string `json:"id"`
 }

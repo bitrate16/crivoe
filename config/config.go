@@ -3,10 +3,9 @@ package config
 import "flag"
 
 type Config struct {
-	MaxWorkers int
-	MaxTasks   int
-	Port       int
-	Host       string
+	StoragePath string
+	Port        int
+	Host        string
 }
 
 var config *Config
@@ -28,18 +27,11 @@ func parseConfig() {
 		"server host",
 	)
 
-	flag.IntVar(
-		&args.MaxWorkers,
-		"max-workers",
-		1,
-		"max allowed amount of parallel workers",
-	)
-
-	flag.IntVar(
-		&args.MaxTasks,
-		"max-tasks",
-		65536,
-		"max allowed amount of waiting tasks in scheduler",
+	flag.StringVar(
+		&args.StoragePath,
+		"storage",
+		"storage",
+		"storage path",
 	)
 
 	flag.Parse()
