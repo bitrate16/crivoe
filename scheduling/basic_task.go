@@ -7,9 +7,6 @@ type BasicTask struct {
 	// Worker type for this task
 	Type string `json:"type"`
 
-	// Assigned task ID
-	Id string `json:"id"`
-
 	// Max retries of the task
 	MaxRetries int `json:"max_retries"`
 

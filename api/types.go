@@ -17,5 +17,10 @@ type HTTPTask struct {
 }
 
 type HTTPJob struct {
-	Id string `json:"id"`
+	Ids []string `json:"ids"`
+}
+
+type HTTPStatus struct {
+	Id     string `json:"id"`
+	Status string `json:"status"`
 }
