@@ -47,7 +47,7 @@ func TestBasicQueueDummyTask(t *testing.T) {
 		BasicWorkerHandler(func(task *BasicTask, callback BasicCallback) {
 			fmt.Printf("task = %v, callback = %v\n", task, callback)
 			callback.Done(&BasicCallbackResult{
-				Status: TaskStatusComplete,
+				Status: BasicCallbackStatusComplete,
 				Result: "potato",
 			})
 		}),
@@ -87,7 +87,7 @@ func TestBasicQueueLongTask(t *testing.T) {
 		BasicWorkerHandler(func(task *BasicTask, callback BasicCallback) {
 			fmt.Printf("task = %v, callback = %v\n", task, callback)
 			callback.Done(&BasicCallbackResult{
-				Status: TaskStatusComplete,
+				Status: BasicCallbackStatusComplete,
 				Result: "potato",
 			})
 		}),

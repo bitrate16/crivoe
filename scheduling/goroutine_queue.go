@@ -15,7 +15,7 @@ type basicQueueTask struct {
 }
 
 // Basic queue object
-type BasicQueue struct {
+type GoroutineQueue struct {
 	lock    sync.Mutex
 	quit    chan struct{}
 	queue   chan *basicQueueTask
@@ -23,7 +23,7 @@ type BasicQueue struct {
 	workers map[string]BasicWorker
 }
 
-func (q *BasicQueue) queueLoop() {
+func (q *GoroutineQueue) queueLoop() {
 	for {
 		select {
 		case <-q.quit:
@@ -90,15 +90,15 @@ func (q *BasicQueue) queueLoop() {
 	}
 }
 
-func NewBasicQueue() *BasicQueue {
-	return &BasicQueue{
+func NewBasicQueue() *GoroutineQueue {
+	return &GoroutineQueue{
 		workers: make(map[string]BasicWorker),
 		running: false,
 	}
 }
 
 // Register specific worker, not thread-safe
-func (q *BasicQueue) RegisterWorker(workerType string, worker BasicWorker) error {
+func (q *GoroutineQueue) RegisterWorker(workerType string, worker BasicWorker) error {
 	if q == nil {
 		return errors.New("queue is nil")
 	}
@@ -109,7 +109,7 @@ func (q *BasicQueue) RegisterWorker(workerType string, worker BasicWorker) error
 }
 
 // Get specific worker, not thread-safe
-func (q *BasicQueue) GetWorker(workerType string) (BasicWorker, error) {
+func (q *GoroutineQueue) GetWorker(workerType string) (BasicWorker, error) {
 	if q == nil {
 		return nil, errors.New("queue is nil")
 	}
@@ -121,7 +121,7 @@ func (q *BasicQueue) GetWorker(workerType string) (BasicWorker, error) {
 	return nil, fmt.Errorf("worker for %s does not exist", workerType)
 }
 
-func (q *BasicQueue) Start() error {
+func (q *GoroutineQueue) Start() error {
 	if q == nil {
 		return errors.New("queue is nil")
 	}
@@ -142,7 +142,7 @@ func (q *BasicQueue) Start() error {
 	return nil
 }
 
-func (q *BasicQueue) Stop() error {
+func (q *GoroutineQueue) Stop() error {
 	if q == nil {
 		return errors.New("queue is nil")
 	}
@@ -162,7 +162,7 @@ func (q *BasicQueue) Stop() error {
 	return nil
 }
 
-func (q *BasicQueue) Add(task *BasicTask, callback BasicCallback) error {
+func (q *GoroutineQueue) Add(task *BasicTask, callback BasicCallback) error {
 	if q == nil {
 		return errors.New("queue is nil")
 	}

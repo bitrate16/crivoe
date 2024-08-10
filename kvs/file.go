@@ -23,16 +23,16 @@ func (s *FileKVS) initDB() {
 	s.db.Exec("create index if not exists idx_kvs_key on metadata(key)")
 }
 
-func NewFileKVS(path string) (*FileKVS, error) {
+func NewFileKVS(path string) *FileKVS {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
 	return &FileKVS{
 		path:   absPath,
 		isOpen: false,
-	}, nil
+	}
 }
 
 func checkKVSIsNil(kvs *FileKVS) {

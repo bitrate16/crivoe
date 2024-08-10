@@ -15,11 +15,10 @@ func TestFileKVSCreate(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs, err := NewFileKVS(testDirName)
-	assert.NoError(t, err)
+	kvs := NewFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
-	err = kvs.Open()
+	err := kvs.Open()
 	assert.NoError(t, err)
 	assert.True(t, kvs.isOpen)
 
@@ -35,11 +34,10 @@ func TestFileKVSSet(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs, err := NewFileKVS(testDirName)
-	assert.NoError(t, err)
+	kvs := NewFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
-	err = kvs.Open()
+	err := kvs.Open()
 	assert.NoError(t, err)
 	assert.True(t, kvs.isOpen)
 
@@ -152,11 +150,10 @@ func TestFileKVSSetRewrite(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs, err := NewFileKVS(testDirName)
-	assert.NoError(t, err)
+	kvs := NewFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
-	err = kvs.Open()
+	err := kvs.Open()
 	assert.NoError(t, err)
 	assert.True(t, kvs.isOpen)
 
@@ -241,11 +238,10 @@ func TestFileKVSList(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs, err := NewFileKVS(testDirName)
-	assert.NoError(t, err)
+	kvs := NewFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
-	err = kvs.Open()
+	err := kvs.Open()
 	assert.NoError(t, err)
 	assert.True(t, kvs.isOpen)
 
@@ -289,11 +285,10 @@ func TestFileKVSDelete(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs, err := NewFileKVS(testDirName)
-	assert.NoError(t, err)
+	kvs := NewFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
-	err = kvs.Open()
+	err := kvs.Open()
 	assert.NoError(t, err)
 	assert.True(t, kvs.isOpen)
 

@@ -1,6 +1,9 @@
 package api
 
-import "time"
+type HTTPJob struct {
+	// Options fot the task
+	Options interface{} `json:"options"`
+}
 
 type HTTPTask struct {
 	// Worker type for this task
@@ -9,15 +12,20 @@ type HTTPTask struct {
 	// Max retries of the task
 	MaxRetries int `json:"max_retries"`
 
-	// Delay between retries in milliseconds
-	RetryDelay time.Duration `json:"retry_delay"`
-
 	// Options fot the task
 	Options interface{} `json:"options"`
+
+	// Options fot the task
+	Jobs []*HTTPJob `json:"jobs"`
 }
 
-type HTTPJob struct {
-	Ids []string `json:"ids"`
+type HTTPTaskSpec struct {
+	Id     string   `json:"id"`
+	JobIds []string `json:"job_ids"`
+}
+
+type HTTPJobSpec struct {
+	Id string `json:"id"`
 }
 
 type HTTPStatus struct {
