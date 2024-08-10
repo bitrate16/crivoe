@@ -2,8 +2,8 @@ package kvs
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -11,9 +11,10 @@ import (
 )
 
 type FileKVS struct {
-	isOpen bool
-	path   string
-	db     *sql.DB
+	isOpen     bool
+	path       string
+	db         *sql.DB
+	serializer Serializer
 }
 
 func (s *FileKVS) initDB() {
@@ -21,15 +22,19 @@ func (s *FileKVS) initDB() {
 	// s.db.Exec("create index if not exists idx_kvs_key on metadata(key)")
 }
 
-func NewFileKVS(path string) *FileKVS {
+func NewFileKVS(
+	path string,
+	serializer Serializer,
+) *FileKVS {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		panic(err)
 	}
 
 	return &FileKVS{
-		path:   absPath,
-		isOpen: false,
+		path:       absPath,
+		isOpen:     false,
+		serializer: serializer,
 	}
 }
 
@@ -79,7 +84,7 @@ func (kvs *FileKVS) Set(key string, value interface{}) error {
 		return errors.New("kvs is closed")
 	}
 
-	valueBytes, err := json.Marshal(value)
+	valueBytes, err := kvs.serializer.Serialize(value)
 	if err != nil {
 		if value == nil {
 			_, err = kvs.db.Exec("insert into kvs (key, value) values (?, null) on conflict (key) do update set value = null", key)
@@ -116,8 +121,7 @@ func (kvs *FileKVS) Get(key string) (interface{}, error) {
 	}
 
 	if resultValueJson.Valid {
-		var value interface{}
-		err = json.Unmarshal([]byte(resultValueJson.String), &value)
+		value, err := kvs.serializer.Deserialize([]byte(resultValueJson.String))
 		return value, err
 	}
 
@@ -168,4 +172,33 @@ func (kvs *FileKVS) List() ([]string, error) {
 	}
 
 	return keys, nil
+}
+
+func (kvs *FileKVS) KeyIterator() KVSKeyIterator {
+	var offset uint64
+
+	return KVSKeyIteratorFunc(
+		func() (string, bool) {
+			rows, err := kvs.db.Query("select key from kvs order by key limit 1 offset ?", offset)
+			if err != nil {
+				fmt.Printf("Uncaught error in iterator: %v\n", err)
+				return "", false
+			}
+
+			if !rows.Next() {
+				return "", false
+			}
+
+			var key string
+			err = rows.Scan(&key)
+			if err != nil {
+				fmt.Printf("Uncaught error in iterator: %v\n", err)
+				return "", false
+			}
+
+			offset += 1
+
+			return key, true
+		},
+	)
 }

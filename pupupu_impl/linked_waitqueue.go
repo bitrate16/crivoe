@@ -1,7 +1,7 @@
 package pupupu_impl
 
 import (
-	"crivoe/pupupu"
+	"crivoe/interfaces"
 	"sync"
 )
 
@@ -31,7 +31,7 @@ func NewLinkedWaitQueue() *LinkedWaitQueue {
 
 // Push item into Queue
 // Returns `hasPushed` which may be `false` when queue is dropped
-func (c *LinkedWaitQueue) WaitPush(value interface{}) bool {
+func (c *LinkedWaitQueue) Push(value interface{}) bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -63,7 +63,7 @@ func (c *LinkedWaitQueue) WaitPush(value interface{}) bool {
 // Pop item from Queue
 // Returns `(itemValue, hasItem)`
 // `hasItem` is set to `false` only when queue is dropped
-func (c *LinkedWaitQueue) WaitPop() (interface{}, bool) {
+func (c *LinkedWaitQueue) Pop() (interface{}, bool) {
 	c.lock.Lock()
 
 	for c.first == nil && !c.drop {
@@ -82,7 +82,7 @@ func (c *LinkedWaitQueue) WaitPop() (interface{}, bool) {
 }
 
 // Drop everything from queue & unblock all WaitPop operations
-func (c *LinkedWaitQueue) WaitDrop(sink pupupu.WaitQueueSink) {
+func (c *LinkedWaitQueue) Cancel(sink interfaces.WaitQueueSink) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -103,7 +103,7 @@ func (c *LinkedWaitQueue) WaitDrop(sink pupupu.WaitQueueSink) {
 }
 
 // Drop everything from queue & unblock all WaitPop operations
-func (c *LinkedWaitQueue) WaitReset() {
+func (c *LinkedWaitQueue) Reset() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

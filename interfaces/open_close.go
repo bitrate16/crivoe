@@ -1,4 +1,4 @@
-package helper
+package interfaces
 
 type OpenClose interface {
 	Open() error

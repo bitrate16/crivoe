@@ -1,7 +1,7 @@
 package pupupu_impl
 
 import (
-	"crivoe/helper"
+	"crivoe/interfaces"
 	"crivoe/kvs"
 	"crivoe/pupupu"
 	"errors"
@@ -12,13 +12,31 @@ import (
 	"github.com/bitrate16/bloby"
 )
 
+// Master implementation using in-memory or file-based storage for `KVS` and file-based storage for `Storage`.
+//
+// In memory mode, `Storage` is deleted on exit and no data persists.
+// In regular mode, `KVS` and `Storage` are stored on disk.
+//
+// Backed of Queue is `LinkedQueue` which does not persist among restarts.
+//
+// Normal shutdown:
+// * All tasks from Queue and related jobs are marked as cancelled.
+// * In memory mode all Storage data is wiped from disk, KVS is deleted
+// * In regular mode all Storage data and KVS data persist
+//
+// Emergency shutdown:
+// * Queue drops
+// * In memory mode KVS id deleted, Storage left on disk as-is
+// * In regular mode KVS and Storage left on disk as-is
+// * Restart in memory mode wipes all Storage from previous failure
+// * restart in normal mode rewrites all task states that are not (completed, failed, cancelled) to cancelled state
 type NailsMaster struct {
 	done        chan struct{}
 	lock        sync.Mutex
 	isOpen      bool
 	kvs         kvs.KVS
 	storage     bloby.Storage
-	queue       pupupu.WaitQueue
+	queue       interfaces.WaitQueue
 	workers     map[string]pupupu.Worker
 	memoryMode  bool
 	storagePath string
@@ -32,7 +50,7 @@ func NewNailsMaster(
 	if memoryMode {
 		kvsBackend = kvs.NewMemoryKVS()
 	} else {
-		kvsBackend = kvs.NewSyncFileKVS(storagePath)
+		kvsBackend = kvs.NewSyncFileKVS(storagePath, NewKVSItemSerializer())
 	}
 
 	storageBackend := bloby.NewFileStorage(storagePath)
@@ -84,7 +102,7 @@ func (m *NailsMaster) masterSession() {
 	// Worker porker
 	go func() {
 		for {
-			taskObj, has := m.queue.WaitPop()
+			taskObj, has := m.queue.Pop()
 			if !has {
 				fmt.Println("Queue dropped")
 				m.done <- struct{}{}
@@ -119,103 +137,19 @@ func (m *NailsMaster) masterSession() {
 				m,
 				pupupu.NewCallbackWrap(
 					func(taskResult *pupupu.TaskResult) {
-						// TODO: Use setStatusForId for status update
-						if has, err := m.kvs.Has(taskResult.Task.Id); !has || (err != nil) {
-							// Not existing
-							fmt.Printf("Task %s not found in KVS\n", taskResult.Task.Id)
-
-							// Notify upstream
-							task.Callback.TaskCallback(taskResult)
-							return
-						}
-
-						item, err := m.kvs.Get(taskResult.Task.Id)
+						err := m.setStatusForId(taskResult.Task.Id, taskResult.Status, KVSItemTypeTask)
 						if err != nil {
-							fmt.Printf("Get Task %s from KVS Error: %v\n", taskResult.Task.Id, err)
-
-							// Notify upstream
-							task.Callback.TaskCallback(taskResult)
-							return
+							fmt.Printf("%e\n", err)
 						}
-
-						// TODO: Better type conversion
-						kvsItem, err := ConvertToKVSItem(item)
-						if err == nil {
-							if kvsItem.Kind == KVSItemTypeTask {
-								kvsItem.Status = taskResult.Status
-
-								// Update status
-								err := m.kvs.Set(taskResult.Task.Id, kvsItem)
-								if err != nil {
-									fmt.Printf("Set Task %s in KVS Error: %v\n", taskResult.Task.Id, err)
-								}
-
-								// Notify upstream
-								task.Callback.TaskCallback(taskResult)
-								return
-							}
-
-							// Not Task
-							fmt.Printf("Task %s is a Job in KVS\n", taskResult.Task.Id)
-
-							// Notify upstream
-							task.Callback.TaskCallback(taskResult)
-							return
-						}
-
-						// Not Task
-						fmt.Printf("Task %s malformed type in KVS: %T, %v\n", taskResult.Task.Id, item, err)
 
 						// Notify upstream
 						task.Callback.TaskCallback(taskResult)
 					},
 					func(jobResult *pupupu.JobResult) {
-						// TODO: Use setStatusForId for status update
-						if has, err := m.kvs.Has(jobResult.Job.Id); !has || (err != nil) {
-							// Not existing
-							fmt.Printf("Job %s not found in KVS\n", jobResult.Job.Id)
-
-							// Notify upstream
-							task.Callback.JobCallback(jobResult)
-							return
-						}
-
-						item, err := m.kvs.Get(jobResult.Job.Id)
+						err := m.setStatusForId(jobResult.Job.Id, jobResult.Status, KVSItemTypeJob)
 						if err != nil {
-							fmt.Printf("Get Job %s from KVS Error: %v\n", jobResult.Job.Id, err)
-
-							// Notify upstream
-							task.Callback.JobCallback(jobResult)
-							return
+							fmt.Printf("%e\n", err)
 						}
-
-						// TODO: Better type conversion
-						kvsItem, err := ConvertToKVSItem(item)
-						if err == nil {
-							if kvsItem.Kind == KVSItemTypeJob {
-								kvsItem.Status = jobResult.Status
-
-								// Update status
-								err := m.kvs.Set(jobResult.Job.Id, kvsItem)
-								if err != nil {
-									fmt.Printf("Set Job %s in KVS Error: %v\n", jobResult.Job.Id, err)
-								}
-
-								// Notify upstream
-								task.Callback.JobCallback(jobResult)
-								return
-							}
-
-							// Not Task
-							fmt.Printf("Job %s is a Task in KVS\n", jobResult.Job.Id)
-
-							// Notify upstream
-							task.Callback.JobCallback(jobResult)
-							return
-						}
-
-						// Not Task
-						fmt.Printf("Job %s malformed type in KVS: %T, %v\n", jobResult.Job.Id, item, err)
 
 						// Notify upstream
 						task.Callback.JobCallback(jobResult)
@@ -226,12 +160,55 @@ func (m *NailsMaster) masterSession() {
 	}()
 }
 
+// Validate integrity of KVS on emergency shutdown
+//
+// Rewrite all statuses on unfinished tasks to `StatusCancel`
+func (m *NailsMaster) rewriteEntryStatusOnRestart() error {
+	hasAlerted := false
+
+	iterator := m.kvs.KeyIterator()
+	for {
+		key, has := iterator.Next()
+		if !has {
+			break
+		}
+
+		if !hasAlerted {
+			hasAlerted = true
+			fmt.Println("Validating integrity of KVS")
+		}
+
+		status, err := m.getStatusForId(key, KVSItemTypeUndefined)
+		if err != nil {
+			return err
+		}
+
+		if status != pupupu.StatusCancel &&
+			status != pupupu.StatusComplete &&
+			status != pupupu.StatusFail {
+
+			fmt.Printf("Recover status for %s: %s\n", key, status)
+			err := m.setStatusForId(key, pupupu.StatusCancel, KVSItemTypeUndefined)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (m *NailsMaster) Start() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	if m.isOpen {
 		return errors.New("Master is open")
+	}
+
+	// Drop old storage
+	if m.memoryMode {
+		os.RemoveAll(m.storagePath)
 	}
 
 	// Open Storage
@@ -241,10 +218,10 @@ func (m *NailsMaster) Start() error {
 	}
 
 	// Open KVS
-	if kvsOpenClose, ok := m.kvs.(helper.OpenClose); ok {
+	if kvsOpenClose, ok := m.kvs.(interfaces.OpenClose); ok {
 		err := kvsOpenClose.Open()
 		if err != nil {
-			// Cascade back
+			// Cascade close
 			err2 := m.storage.Close()
 			if err2 != nil {
 				return errors.Join(err, err2)
@@ -253,7 +230,17 @@ func (m *NailsMaster) Start() error {
 		}
 	}
 
-	m.queue.WaitReset()
+	// Try rewrite old statuses
+	err = m.rewriteEntryStatusOnRestart()
+	if err != nil {
+		// Cascade close
+		if kvsOpenClose, ok := m.kvs.(interfaces.OpenClose); ok {
+			return errors.Join(err, kvsOpenClose.Open(), m.storage.Close())
+		}
+		return errors.Join(err, m.storage.Close())
+	}
+
+	m.queue.Reset()
 	m.done = make(chan struct{}, 1)
 	m.masterSession()
 
@@ -263,7 +250,26 @@ func (m *NailsMaster) Start() error {
 	return nil
 }
 
-func (m *NailsMaster) setStatusForId(id string, status string) error {
+func (m *NailsMaster) getStatusForId(id string, expectedType KVSItemType) (string, error) {
+	if has, err := m.kvs.Has(id); !has || (err != nil) {
+		// Not existing
+		return "", fmt.Errorf("Entry %s not found in KVS\n", id)
+	}
+
+	item, err := m.kvs.Get(id)
+	if err != nil {
+		return "", fmt.Errorf("Get Entry %s from KVS Error: %v\n", id, err)
+	}
+
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if expectedType != KVSItemTypeUndefined && kvsItem.Type != expectedType {
+		return "", fmt.Errorf("Entity type %s does not match expected %s", KVSItemTypeToString(kvsItem.Type), KVSItemTypeToString(expectedType))
+	}
+
+	return kvsItem.Status, nil
+}
+
+func (m *NailsMaster) setStatusForId(id string, status string, expectedType KVSItemType) error {
 	if has, err := m.kvs.Has(id); !has || (err != nil) {
 		// Not existing
 		return fmt.Errorf("Entry %s not found in KVS\n", id)
@@ -274,10 +280,9 @@ func (m *NailsMaster) setStatusForId(id string, status string) error {
 		return fmt.Errorf("Get Entry %s from KVS Error: %v\n", id, err)
 	}
 
-	// TODO: Better type conversion
-	kvsItem, err := ConvertToKVSItem(item)
-	if err != nil {
-		return fmt.Errorf("Convert Entry %s from KVS Error: %v\n", id, err)
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if expectedType != KVSItemTypeUndefined && kvsItem.Type != expectedType {
+		return fmt.Errorf("Entity type %s does not match expected %s", KVSItemTypeToString(kvsItem.Type), KVSItemTypeToString(expectedType))
 	}
 
 	// Patch status
@@ -301,9 +306,9 @@ func (m *NailsMaster) Stop() error {
 		return errors.New("Master is closed")
 	}
 
-	// Drop queue & mark allt asks as cancelled
-	m.queue.WaitDrop(
-		pupupu.WaitQueueSinkFunc(
+	// Drop queue & mark all tasks as cancelled
+	m.queue.Cancel(
+		interfaces.WaitQueueSinkFunc(
 			func(value interface{}) {
 				task, ok := value.(*pupupu.WorkerTask)
 				if !ok {
@@ -313,7 +318,7 @@ func (m *NailsMaster) Stop() error {
 
 				// Update status for task
 				// TODO: Instead call task.Callback on each entry to delegate status processing to task callback
-				err := m.setStatusForId(task.Id, pupupu.StatusCancel)
+				err := m.setStatusForId(task.Id, pupupu.StatusCancel, KVSItemTypeUndefined)
 				if err != nil {
 					fmt.Printf("%e\n", err)
 				}
@@ -321,7 +326,7 @@ func (m *NailsMaster) Stop() error {
 				// Update status for each Job
 				for _, job := range task.Jobs {
 					// TODO: Instead call task.Callback on each entry to delegate status processing to task callback
-					err := m.setStatusForId(job.Id, pupupu.StatusCancel)
+					err := m.setStatusForId(job.Id, pupupu.StatusCancel, KVSItemTypeUndefined)
 					if err != nil {
 						fmt.Printf("%e\n", err)
 					}
@@ -336,7 +341,7 @@ func (m *NailsMaster) Stop() error {
 
 	err1 := m.storage.Close()
 	var err2 error
-	if kvsOpenClose, ok := m.kvs.(helper.OpenClose); ok {
+	if kvsOpenClose, ok := m.kvs.(interfaces.OpenClose); ok {
 		err2 = kvsOpenClose.Close()
 	}
 
@@ -387,7 +392,7 @@ func (m *NailsMaster) Add(task *pupupu.Task, callback pupupu.Callback) *pupupu.T
 
 	// Create KVS Item
 	var kvsTask KVSItem
-	kvsTask.Kind = KVSItemTypeTask
+	kvsTask.Type = KVSItemTypeTask
 	kvsTask.Status = pupupu.StatusUndefined
 	kvsTask.JobIds = make([]string, 0, len(task.Jobs))
 	kvsTask.Id = taskSpec.Id
@@ -406,7 +411,7 @@ func (m *NailsMaster) Add(task *pupupu.Task, callback pupupu.Callback) *pupupu.T
 
 		// Create KVS Item
 		var kvsJob KVSItem
-		kvsJob.Kind = KVSItemTypeJob
+		kvsJob.Type = KVSItemTypeJob
 		kvsJob.Id = jobSpec.Id
 		kvsJob.Status = pupupu.StatusUndefined
 
@@ -428,7 +433,7 @@ func (m *NailsMaster) Add(task *pupupu.Task, callback pupupu.Callback) *pupupu.T
 	m.kvs.Set(kvsTask.Id, kvsTask)
 
 	// Put Worker Task
-	done := m.queue.WaitPush(&workerTask)
+	done := m.queue.Push(&workerTask)
 	if !done {
 		fmt.Println("Queue in unexpected dropped state")
 		return nil
@@ -458,7 +463,7 @@ func (m *NailsMaster) GetTaskStatus(id string) *pupupu.TaskStatus {
 	}
 
 	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Kind == KVSItemTypeTask {
+		if kvsItem.Type == KVSItemTypeTask {
 			return &pupupu.TaskStatus{
 				Id:     kvsItem.Id,
 				Status: kvsItem.Status,
@@ -493,7 +498,7 @@ func (m *NailsMaster) GetJobStatus(id string) *pupupu.JobStatus {
 	}
 
 	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Kind == KVSItemTypeJob {
+		if kvsItem.Type == KVSItemTypeJob {
 			return &pupupu.JobStatus{
 				Id:     kvsItem.Id,
 				Status: kvsItem.Status,
@@ -528,7 +533,7 @@ func (m *NailsMaster) GetTaskMetadata(id string) *pupupu.TaskMetadata {
 	}
 
 	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Kind == KVSItemTypeTask {
+		if kvsItem.Type == KVSItemTypeTask {
 			if kvsItem.Status == pupupu.StatusComplete {
 				// Query node from storage
 				node, err := m.storage.GetByName(id)
@@ -579,7 +584,7 @@ func (m *NailsMaster) GetJobMetadata(id string) *pupupu.JobMetadata {
 	}
 
 	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Kind == KVSItemTypeJob {
+		if kvsItem.Type == KVSItemTypeJob {
 			if kvsItem.Status == pupupu.StatusComplete {
 				// Query node from storage
 				node, err := m.storage.GetByName(id)
@@ -630,7 +635,7 @@ func (m *NailsMaster) GetJobDataReader(id string) pupupu.JobDataReader {
 	}
 
 	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Kind == KVSItemTypeJob {
+		if kvsItem.Type == KVSItemTypeJob {
 			if kvsItem.Status == pupupu.StatusComplete {
 				// Query node from storage
 				node, err := m.storage.GetByName(id)

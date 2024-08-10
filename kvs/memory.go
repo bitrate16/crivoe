@@ -67,9 +67,32 @@ func (kvs *MemoryKVS) List() ([]string, error) {
 
 	keys := make([]string, 0)
 
-	for key, _ := range kvs.table {
+	for key := range kvs.table {
 		keys = append(keys, key)
 	}
 
 	return keys, nil
+}
+
+func (kvs *MemoryKVS) KeyIterator() KVSKeyIterator {
+	var offset uint64
+
+	return KVSKeyIteratorFunc(
+		func() (string, bool) {
+			kvs.lock.Lock()
+			defer kvs.lock.Unlock()
+
+			// TODO: Better implementation of key seek
+			var localOffset uint64
+			for key := range kvs.table {
+				if localOffset >= offset {
+					offset += 1
+					return key, true
+				}
+				localOffset += 1
+			}
+
+			return "", false
+		},
+	)
 }

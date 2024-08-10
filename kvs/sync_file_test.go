@@ -15,7 +15,7 @@ func TestSyncFileKVSCreate(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewSyncFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName, NewDefaultSerializer())
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
@@ -34,7 +34,7 @@ func TestSyncFileKVSSet(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewSyncFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName, NewDefaultSerializer())
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
@@ -150,7 +150,7 @@ func TestSyncFileKVSSetRewrite(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewSyncFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName, NewDefaultSerializer())
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
@@ -238,7 +238,7 @@ func TestSyncFileKVSList(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewSyncFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName, NewDefaultSerializer())
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
@@ -285,7 +285,7 @@ func TestSyncFileKVSDelete(t *testing.T) {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewSyncFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName, NewDefaultSerializer())
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()

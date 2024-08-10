@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const DEBUG_DELAY = time.Second * 10
+const DEBUG_DELAY = time.Second * 1
 
 type DebugWorker struct {
 }

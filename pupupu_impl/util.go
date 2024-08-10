@@ -1,7 +1,6 @@
 package pupupu_impl
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -33,19 +32,4 @@ func RandStringRunes(n int) string {
 	}
 
 	return sb.String()
-}
-
-func ConvertToKVSItem(value interface{}) (*KVSItem, error) {
-	bytes, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-
-	var holder KVSItem
-	err = json.Unmarshal(bytes, &holder)
-	if err != nil {
-		return nil, err
-	}
-
-	return &holder, nil
 }
