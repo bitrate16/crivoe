@@ -119,6 +119,7 @@ func (m *NailsMaster) masterSession() {
 				m,
 				pupupu.NewCallbackWrap(
 					func(taskResult *pupupu.TaskResult) {
+						// TODO: Use setStatusForId for status update
 						if has, err := m.kvs.Has(taskResult.Task.Id); !has || (err != nil) {
 							// Not existing
 							fmt.Printf("Task %s not found in KVS\n", taskResult.Task.Id)
@@ -169,6 +170,7 @@ func (m *NailsMaster) masterSession() {
 						task.Callback.TaskCallback(taskResult)
 					},
 					func(jobResult *pupupu.JobResult) {
+						// TODO: Use setStatusForId for status update
 						if has, err := m.kvs.Has(jobResult.Job.Id); !has || (err != nil) {
 							// Not existing
 							fmt.Printf("Job %s not found in KVS\n", jobResult.Job.Id)
@@ -261,6 +263,36 @@ func (m *NailsMaster) Start() error {
 	return nil
 }
 
+func (m *NailsMaster) setStatusForId(id string, status string) error {
+	if has, err := m.kvs.Has(id); !has || (err != nil) {
+		// Not existing
+		return fmt.Errorf("Entry %s not found in KVS\n", id)
+	}
+
+	item, err := m.kvs.Get(id)
+	if err != nil {
+		return fmt.Errorf("Get Entry %s from KVS Error: %v\n", id, err)
+	}
+
+	// TODO: Better type conversion
+	kvsItem, err := ConvertToKVSItem(item)
+	if err != nil {
+		return fmt.Errorf("Convert Entry %s from KVS Error: %v\n", id, err)
+	}
+
+	// Patch status
+	kvsItem.Status = status
+	fmt.Printf("Setting status of %s to %s\n", id, status)
+
+	// Update status
+	err = m.kvs.Set(id, kvsItem)
+	if err != nil {
+		return fmt.Errorf("Set Entry %s in KVS Error: %v\n", id, err)
+	}
+
+	return nil
+}
+
 func (m *NailsMaster) Stop() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -269,8 +301,36 @@ func (m *NailsMaster) Stop() error {
 		return errors.New("Master is closed")
 	}
 
+	// Drop queue & mark allt asks as cancelled
+	m.queue.WaitDrop(
+		pupupu.WaitQueueSinkFunc(
+			func(value interface{}) {
+				task, ok := value.(*pupupu.WorkerTask)
+				if !ok {
+					fmt.Printf("Malformed type for %+v: %T\n", value, value)
+					return
+				}
+
+				// Update status for task
+				// TODO: Instead call task.Callback on each entry to delegate status processing to task callback
+				err := m.setStatusForId(task.Id, pupupu.StatusCancel)
+				if err != nil {
+					fmt.Printf("%e\n", err)
+				}
+
+				// Update status for each Job
+				for _, job := range task.Jobs {
+					// TODO: Instead call task.Callback on each entry to delegate status processing to task callback
+					err := m.setStatusForId(job.Id, pupupu.StatusCancel)
+					if err != nil {
+						fmt.Printf("%e\n", err)
+					}
+				}
+			},
+		),
+	)
+
 	// Wait for finish
-	m.queue.WaitDrop()
 	<-m.done
 	close(m.done)
 

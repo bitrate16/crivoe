@@ -1,6 +1,7 @@
 package pupupu_impl
 
 import (
+	"crivoe/pupupu"
 	"sync"
 )
 
@@ -81,15 +82,20 @@ func (c *LinkedWaitQueue) WaitPop() (interface{}, bool) {
 }
 
 // Drop everything from queue & unblock all WaitPop operations
-func (c *LinkedWaitQueue) WaitDrop() {
+func (c *LinkedWaitQueue) WaitDrop(sink pupupu.WaitQueueSink) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	needUnblock := c.first == nil
 
-	c.first = nil
-	c.last = nil
 	c.drop = true
+	for c.first != nil {
+		value := c.first.value
+		c.first = c.first.next
+
+		sink.Handle(value)
+	}
+	c.last = nil
 
 	if needUnblock {
 		c.cond.Broadcast()

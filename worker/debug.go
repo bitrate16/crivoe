@@ -3,7 +3,10 @@ package worker
 import (
 	"crivoe/pupupu"
 	"fmt"
+	"time"
 )
+
+const DEBUG_DELAY = time.Second * 10
 
 type DebugWorker struct {
 }
@@ -14,6 +17,9 @@ func (w *DebugWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, call
 		fmt.Printf("[%d] Job ID: %s\n", index, job.Id)
 		fmt.Printf("     Options: %+v\n", job.Job.Options)
 	}
+
+	fmt.Printf("sleep for %v\n", DEBUG_DELAY)
+	time.Sleep(DEBUG_DELAY)
 
 	for _, job := range task.Jobs {
 		fmt.Printf("Mark COMPLETE Job ID: %s\n", job.Id)
