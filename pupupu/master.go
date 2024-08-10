@@ -24,5 +24,5 @@ type Master interface {
 	Stop() error
 
 	GetWorker(workerType string) (Worker, error)
-	RegisterWorker(workerTyccpe string) error
+	RegisterWorker(workerType string, worker Worker) error
 }

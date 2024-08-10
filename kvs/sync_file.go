@@ -6,30 +6,38 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type FileKVS struct {
+type SyncFileKVS struct {
+	lock   sync.RWMutex
 	isOpen bool
 	path   string
 	db     *sql.DB
 }
 
-func (s *FileKVS) initDB() {
+func (s *SyncFileKVS) initDB() {
 	s.db.Exec("create table if not exists kvs (key text primary key, value text)")
-	// s.db.Exec("create index if not exists idx_kvs_key on metadata(key)")
+	s.db.Exec("create index if not exists idx_kvs_key on metadata(key)")
 }
 
-func NewFileKVS(path string) *FileKVS {
+func NewSyncFileKVS(path string) *SyncFileKVS {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		panic(err)
 	}
 
-	return &FileKVS{
+	return &SyncFileKVS{
 		path:   absPath,
 		isOpen: false,
+	}
+}
+
+func checkSyncFileKVSIsNil(kvs *SyncFileKVS) {
+	if kvs == nil {
+		panic("storage is nil")
 	}
 }
 
@@ -38,7 +46,12 @@ func NewFileKVS(path string) *FileKVS {
 // WARNING:
 //
 //	This implementation supports only multigoroutine access, but not the multiprocess access. opening database in multiprocess mode will cause database corruption.
-func (kvs *FileKVS) Open() error {
+func (kvs *SyncFileKVS) Open() error {
+	checkSyncFileKVSIsNil(kvs)
+
+	kvs.lock.RLock()
+	defer kvs.lock.RUnlock()
+
 	if kvs.isOpen {
 		return errors.New("kvs is open")
 	}
@@ -62,7 +75,12 @@ func (kvs *FileKVS) Open() error {
 	return nil
 }
 
-func (kvs *FileKVS) Close() error {
+func (kvs *SyncFileKVS) Close() error {
+	checkSyncFileKVSIsNil(kvs)
+
+	kvs.lock.RLock()
+	defer kvs.lock.RUnlock()
+
 	if !kvs.isOpen {
 		return errors.New("kvs is closed")
 	}
@@ -74,7 +92,12 @@ func (kvs *FileKVS) Close() error {
 	return err
 }
 
-func (kvs *FileKVS) Set(key string, value interface{}) error {
+func (kvs *SyncFileKVS) Set(key string, value interface{}) error {
+	checkSyncFileKVSIsNil(kvs)
+
+	kvs.lock.Lock()
+	defer kvs.lock.Unlock()
+
 	if !kvs.isOpen {
 		return errors.New("kvs is closed")
 	}
@@ -94,7 +117,12 @@ func (kvs *FileKVS) Set(key string, value interface{}) error {
 	return err
 }
 
-func (kvs *FileKVS) Get(key string) (interface{}, error) {
+func (kvs *SyncFileKVS) Get(key string) (interface{}, error) {
+	checkSyncFileKVSIsNil(kvs)
+
+	kvs.lock.RLock()
+	defer kvs.lock.RUnlock()
+
 	if !kvs.isOpen {
 		return nil, errors.New("kvs is closed")
 	}
@@ -124,7 +152,12 @@ func (kvs *FileKVS) Get(key string) (interface{}, error) {
 	return nil, nil
 }
 
-func (kvs *FileKVS) Has(key string) (bool, error) {
+func (kvs *SyncFileKVS) Has(key string) (bool, error) {
+	checkSyncFileKVSIsNil(kvs)
+
+	kvs.lock.RLock()
+	defer kvs.lock.RUnlock()
+
 	if !kvs.isOpen {
 		return false, errors.New("kvs is closed")
 	}
@@ -137,7 +170,12 @@ func (kvs *FileKVS) Has(key string) (bool, error) {
 	return rows.Next(), nil
 }
 
-func (kvs *FileKVS) Remove(key string) error {
+func (kvs *SyncFileKVS) Remove(key string) error {
+	checkSyncFileKVSIsNil(kvs)
+
+	kvs.lock.RLock()
+	defer kvs.lock.RUnlock()
+
 	if !kvs.isOpen {
 		return errors.New("kvs is closed")
 	}
@@ -146,7 +184,12 @@ func (kvs *FileKVS) Remove(key string) error {
 	return err
 }
 
-func (kvs *FileKVS) List() ([]string, error) {
+func (kvs *SyncFileKVS) List() ([]string, error) {
+	checkSyncFileKVSIsNil(kvs)
+
+	kvs.lock.RLock()
+	defer kvs.lock.RUnlock()
+
 	if !kvs.isOpen {
 		return nil, errors.New("kvs is closed")
 	}

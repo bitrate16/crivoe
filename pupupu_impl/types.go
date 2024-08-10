@@ -10,7 +10,7 @@ type KVSItem struct {
 	Kind int `json:"kind"`
 
 	// Id of node
-	Id string `json:"ids"`
+	Id string `json:"id"`
 
 	// Ids of child jobs
 	JobIds []string `json:"job_ids"`

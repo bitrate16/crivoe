@@ -7,3 +7,8 @@ type KVS interface {
 	Remove(key string) error
 	List() ([]string, error)
 }
+
+type OpenClose interface {
+	Open() error
+	Close() error
+}

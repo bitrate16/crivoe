@@ -5,9 +5,12 @@ import (
 	"crivoe/config"
 	"crivoe/pupupu"
 	"crivoe/pupupu_impl"
+	"crivoe/worker"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"time"
 
@@ -20,6 +23,7 @@ var master *pupupu_impl.NailsMaster
 // Sample:
 // curl -vvv 127.0.0.1:8374/create --request POST --data '{"type":"url","options":{"url":"https://google.com","method":"GET"}}'
 // curl -vvv 127.0.0.1:8374/create --request POST --data '{"type":"url","jobs":[ {"options": {"url":"https://google.com","method":"GET"} }, {"options": {"url":"https://yandex.ru","method":"GET"} } ]}'
+// curl -vvv 127.0.0.1:8374/create --request POST --data '{"type":"debug","jobs":[ {"options": {"url":"https://google.com","method":"GET"} }, {"options": {"url":"https://yandex.ru","method":"GET"} } ]}'
 func create(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		http.Error(w, "Method not supported", http.StatusBadRequest)
@@ -174,11 +178,24 @@ func main() {
 
 	fmt.Printf("Args: %+v\n", args)
 
-	master = pupupu_impl.NewNailsMaster(args.StoragePath)
+	master = pupupu_impl.NewNailsMaster(args.StoragePath, args.MemoryMode)
+
+	// Register workers
+	for key, value := range worker.GetRegistry() {
+		master.RegisterWorker(key, value)
+	}
 
 	// Master lifecycle
 	master.Start()
-	defer master.Stop()
+	// defer master.Stop()
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt)
+	go func() {
+		<-signalChan
+		master.Stop()
+		os.Exit(0)
+	}()
 
 	// Create router
 	mux := http.NewServeMux()

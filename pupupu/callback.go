@@ -7,6 +7,9 @@ type TaskResult struct {
 
 	// Optional result
 	Result interface{} `json:"result"`
+
+	// Reference to original Task
+	Task *WorkerTask `json:"task"`
 }
 
 // Job processing result
@@ -16,6 +19,9 @@ type JobResult struct {
 
 	// Optional result
 	Result interface{} `json:"result"`
+
+	// Reference to original Job
+	Job *WorkerJob `json:"job"`
 }
 
 // Callback for worker result

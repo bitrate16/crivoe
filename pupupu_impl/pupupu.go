@@ -5,28 +5,41 @@ import (
 	"crivoe/pupupu"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/bitrate16/bloby"
 )
 
 type NailsMaster struct {
-	done    chan struct{}
-	lock    sync.Mutex
-	isOpen  bool
-	kvs     *kvs.FileKVS
-	storage *bloby.FileStorage
-	queue   pupupu.WaitQueue
-	workers map[string]pupupu.Worker
+	done        chan struct{}
+	lock        sync.Mutex
+	isOpen      bool
+	kvs         kvs.KVS
+	storage     *bloby.FileStorage
+	queue       pupupu.WaitQueue
+	workers     map[string]pupupu.Worker
+	memoryMode  bool
+	storagePath string
 }
 
 func NewNailsMaster(
-	storagepath string,
+	storagePath string,
+	memoryMode bool,
 ) *NailsMaster {
+	var kvsBackend kvs.KVS
+	if memoryMode {
+		kvsBackend = kvs.NewMemoryKVS()
+	} else {
+		kvsBackend = kvs.NewSyncFileKVS(storagePath)
+	}
 	return &NailsMaster{
-		kvs:     kvs.NewFileKVS(storagepath),
-		storage: bloby.NewFileStorage(storagepath),
-		queue:   NewLinkedWaitQueue(),
+		kvs:         kvsBackend,
+		storage:     bloby.NewFileStorage(storagePath),
+		queue:       NewLinkedWaitQueue(),
+		workers:     make(map[string]pupupu.Worker),
+		memoryMode:  memoryMode,
+		storagePath: storagePath,
 	}
 }
 
@@ -67,14 +80,141 @@ func (m *NailsMaster) masterSession() {
 	// Worker porker
 	go func() {
 		for {
-			task, has := m.queue.WaitPop()
+			taskObj, has := m.queue.WaitPop()
 			if !has {
 				fmt.Println("Queue dropped")
 				m.done <- struct{}{}
 				return
 			}
 
+			task, ok := taskObj.(*pupupu.WorkerTask)
+			if !ok {
+				fmt.Printf("Malformed type for %+v: %T\n", taskObj, taskObj)
+				continue
+			}
+
 			fmt.Printf("Task to dispatch: %+v\n", task)
+
+			// Find worker for task
+			worker, err := m.GetWorker(task.Task.Type)
+
+			// Fail on noexistent worker
+			if err != nil {
+				task.Callback.TaskCallback(
+					&pupupu.TaskResult{
+						Status: pupupu.StatusFail,
+						Result: err,
+					},
+				)
+				continue
+			}
+
+			// Fire worker
+			worker.Launch(
+				task,
+				m,
+				pupupu.NewCallbackWrap(
+					func(taskResult *pupupu.TaskResult) {
+						if has, err := m.kvs.Has(taskResult.Task.Id); !has || (err != nil) {
+							// Not existing
+							fmt.Printf("Task %s not found in KVS\n", taskResult.Task.Id)
+
+							// Notify upstream
+							task.Callback.TaskCallback(taskResult)
+							return
+						}
+
+						item, err := m.kvs.Get(taskResult.Task.Id)
+						if err != nil {
+							fmt.Printf("Get Task %s from KVS Error: %v\n", taskResult.Task.Id, err)
+
+							// Notify upstream
+							task.Callback.TaskCallback(taskResult)
+							return
+						}
+
+						kvsItem, err := ConvertToKVSItem(item)
+						if err == nil {
+							if kvsItem.Kind == KVSItemTypeTask {
+								kvsItem.Status = taskResult.Status
+
+								// Update status
+								err := m.kvs.Set(taskResult.Task.Id, kvsItem)
+								if err != nil {
+									fmt.Printf("Set Task %s in KVS Error: %v\n", taskResult.Task.Id, err)
+
+									// Notify upstream
+									task.Callback.TaskCallback(taskResult)
+									return
+								}
+								fmt.Printf("Setting status to %+v\n", kvsItem)
+							}
+
+							// Not Task
+							fmt.Printf("Task %s is a Job in KVS\n", taskResult.Task.Id)
+
+							// Notify upstream
+							task.Callback.TaskCallback(taskResult)
+							return
+						}
+
+						// Not Task
+						fmt.Printf("Task %s malformed type in KVS: %T, %v\n", taskResult.Task.Id, item, err)
+
+						// Notify upstream
+						task.Callback.TaskCallback(taskResult)
+					},
+					func(jobResult *pupupu.JobResult) {
+						if has, err := m.kvs.Has(jobResult.Job.Id); !has || (err != nil) {
+							// Not existing
+							fmt.Printf("Job %s not found in KVS\n", jobResult.Job.Id)
+
+							// Notify upstream
+							task.Callback.JobCallback(jobResult)
+							return
+						}
+
+						item, err := m.kvs.Get(jobResult.Job.Id)
+						if err != nil {
+							fmt.Printf("Get Job %s from KVS Error: %v\n", jobResult.Job.Id, err)
+
+							// Notify upstream
+							task.Callback.JobCallback(jobResult)
+							return
+						}
+
+						kvsItem, err := ConvertToKVSItem(item)
+						if err == nil {
+							if kvsItem.Kind == KVSItemTypeJob {
+								kvsItem.Status = jobResult.Status
+
+								// Update status
+								err := m.kvs.Set(jobResult.Job.Id, kvsItem)
+								if err != nil {
+									fmt.Printf("Set Job %s in KVS Error: %v\n", jobResult.Job.Id, err)
+
+									// Notify upstream
+									task.Callback.JobCallback(jobResult)
+									return
+								}
+							}
+
+							// Not Task
+							fmt.Printf("Job %s is a Task in KVS\n", jobResult.Job.Id)
+
+							// Notify upstream
+							task.Callback.JobCallback(jobResult)
+							return
+						}
+
+						// Not Task
+						fmt.Printf("Job %s malformed type in KVS: %T, %v\n", jobResult.Job.Id, item, err)
+
+						// Notify upstream
+						task.Callback.JobCallback(jobResult)
+					},
+				),
+			)
 		}
 	}()
 }
@@ -94,14 +234,16 @@ func (m *NailsMaster) Start() error {
 	}
 
 	// Open KVS
-	err = m.kvs.Open()
-	if err != nil {
-		// Cascade back
-		err2 := m.storage.Close()
-		if err2 != nil {
-			return errors.Join(err, err2)
+	if kvsOpenClose, ok := m.kvs.(kvs.OpenClose); ok {
+		err = kvsOpenClose.Open()
+		if err != nil {
+			// Cascade back
+			err2 := m.storage.Close()
+			if err2 != nil {
+				return errors.Join(err, err2)
+			}
+			return err
 		}
-		return err
 	}
 
 	m.queue.WaitReset()
@@ -115,6 +257,7 @@ func (m *NailsMaster) Start() error {
 }
 
 func (m *NailsMaster) Stop() error {
+	fmt.Println("STOPPPPPPPPPPPPPPPPPP")
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -122,8 +265,16 @@ func (m *NailsMaster) Stop() error {
 		return errors.New("Master is closed")
 	}
 
+	// Wait for finish
+	m.queue.WaitDrop()
+	<-m.done
+	close(m.done)
+
 	err1 := m.storage.Close()
-	err2 := m.kvs.Close()
+	var err2 error
+	if kvsOpenClose, ok := m.kvs.(kvs.OpenClose); ok {
+		err2 = kvsOpenClose.Close()
+	}
 
 	if err1 != nil {
 		if err2 != nil {
@@ -134,10 +285,10 @@ func (m *NailsMaster) Stop() error {
 		return err2
 	}
 
-	// Wait for finish
-	m.queue.WaitDrop()
-	<-m.done
-	close(m.done)
+	// Drop all
+	if m.memoryMode {
+		os.RemoveAll(m.storagePath)
+	}
 
 	m.isOpen = false
 
@@ -157,35 +308,58 @@ func (m *NailsMaster) Add(task *pupupu.Task, callback pupupu.Callback) *pupupu.T
 		return nil
 	}
 
+	// // Query lastid from KVS
+	// lastIdObj, err := m.kvs.Get("last_id")
+	// if err != nil {
+	// 	lastIdObj = 0
+	// }
+
+	// lastIdStr, ok := lastIdObj.(string)
+	// if !ok {
+	// 	lastIdStr = "0"
+	// }
+
+	// lastId, err := strconv.ParseInt(lastIdStr, 10, 64)
+	// if err != nil {
+	// 	lastId = 0
+	// }
+
 	// Create spec
 	var taskSpec pupupu.TaskSpec
 	taskSpec.Type = task.Type
 	taskSpec.Id = RandStringRunes(NAILS_LENGTH)
-	taskSpec.JobSpecs = make([]*pupupu.JobSpec, 0)
+	// taskSpec.Id = strconv.FormatInt(lastId, 16)
+	// lastId += 1
+	taskSpec.JobSpecs = make([]*pupupu.JobSpec, 0, len(task.Jobs))
 
 	// Create Worker Task
 	var workerTask pupupu.WorkerTask
 	workerTask.Id = taskSpec.Id
 	workerTask.Task = task
-	workerTask.Jobs = make([]*pupupu.WorkerJob, 0)
+	workerTask.Jobs = make([]*pupupu.WorkerJob, 0, len(task.Jobs))
+	workerTask.Callback = callback
 
 	// Create KVS Item
 	var kvsTask KVSItem
 	kvsTask.Kind = KVSItemTypeTask
 	kvsTask.Status = pupupu.StatusUndefined
-	kvsTask.JobIds = make([]string, 0)
+	kvsTask.JobIds = make([]string, 0, len(task.Jobs))
 	kvsTask.Id = taskSpec.Id
 
 	// Map jobs
-	for _, job := range task.Jobs {
+	for index, job := range task.Jobs {
+		fmt.Printf("Done %d\n", index)
 		// Create Job Spec
 		var jobSpec pupupu.JobSpec
 		jobSpec.Id = RandStringRunes(NAILS_LENGTH)
+		// jobSpec.Id = strconv.FormatInt(lastId, 16)
+		// lastId += 1
 
 		// Create Worker Job
 		var workerJob pupupu.WorkerJob
 		workerJob.Id = jobSpec.Id
 		workerJob.Job = job
+		workerJob.Callback = callback
 
 		// Create KVS Item
 		var kvsJob KVSItem
@@ -200,17 +374,23 @@ func (m *NailsMaster) Add(task *pupupu.Task, callback pupupu.Callback) *pupupu.T
 		workerTask.Jobs = append(workerTask.Jobs, &workerJob)
 
 		// Track KVS
-		kvsTask.JobIds = append(kvsJob.JobIds, kvsJob.Id)
+		kvsTask.JobIds = append(kvsTask.JobIds, kvsJob.Id)
 
+		// TODO: optimize multiple insertions into KVS
 		// Push KVS Item
 		m.kvs.Set(kvsJob.Id, kvsJob)
 	}
+
+	// err = m.kvs.Set("last_id", strconv.FormatInt(lastId, 10))
+	// if err != nil {
+	// 	fmt.Printf("Failed save lastID: %v\n", err)
+	// }
 
 	// Push KVS Item
 	m.kvs.Set(kvsTask.Id, kvsTask)
 
 	// Put Worker Task
-	done := m.queue.WaitPush(workerTask)
+	done := m.queue.WaitPush(&workerTask)
 	if !done {
 		fmt.Println("Queue in unexpected dropped state")
 		return nil
@@ -239,11 +419,11 @@ func (m *NailsMaster) GetTaskStatus(id string) *pupupu.TaskStatus {
 		return nil
 	}
 
-	if kvmItem, ok := item.(KVSItem); ok {
-		if kvmItem.Kind == KVSItemTypeTask {
+	if kvsItem, ok := item.(KVSItem); ok {
+		if kvsItem.Kind == KVSItemTypeTask {
 			return &pupupu.TaskStatus{
-				Id:     kvmItem.Id,
-				Status: kvmItem.Status,
+				Id:     kvsItem.Id,
+				Status: kvsItem.Status,
 			}
 		}
 
@@ -274,11 +454,11 @@ func (m *NailsMaster) GetJobStatus(id string) *pupupu.JobStatus {
 		return nil
 	}
 
-	if kvmItem, ok := item.(KVSItem); ok {
-		if kvmItem.Kind == KVSItemTypeJob {
+	if kvsItem, ok := item.(KVSItem); ok {
+		if kvsItem.Kind == KVSItemTypeJob {
 			return &pupupu.JobStatus{
-				Id:     kvmItem.Id,
-				Status: kvmItem.Status,
+				Id:     kvsItem.Id,
+				Status: kvsItem.Status,
 			}
 		}
 
@@ -309,9 +489,9 @@ func (m *NailsMaster) GetTaskMetadata(id string) *pupupu.TaskMetadata {
 		return nil
 	}
 
-	if kvmItem, ok := item.(KVSItem); ok {
-		if kvmItem.Kind == KVSItemTypeTask {
-			if kvmItem.Status == pupupu.StatusComplete {
+	if kvsItem, ok := item.(KVSItem); ok {
+		if kvsItem.Kind == KVSItemTypeTask {
+			if kvsItem.Status == pupupu.StatusComplete {
 				// Query node from storage
 				node, err := m.storage.GetByName(id)
 				if err != nil {
@@ -324,7 +504,7 @@ func (m *NailsMaster) GetTaskMetadata(id string) *pupupu.TaskMetadata {
 				}
 
 				return &pupupu.TaskMetadata{
-					Id:       kvmItem.Id,
+					Id:       kvsItem.Id,
 					Metadata: node.GetMetadata(),
 				}
 			}
@@ -360,9 +540,9 @@ func (m *NailsMaster) GetJobMetadata(id string) *pupupu.JobMetadata {
 		return nil
 	}
 
-	if kvmItem, ok := item.(KVSItem); ok {
-		if kvmItem.Kind == KVSItemTypeJob {
-			if kvmItem.Status == pupupu.StatusComplete {
+	if kvsItem, ok := item.(KVSItem); ok {
+		if kvsItem.Kind == KVSItemTypeJob {
+			if kvsItem.Status == pupupu.StatusComplete {
 				// Query node from storage
 				node, err := m.storage.GetByName(id)
 				if err != nil {
@@ -375,7 +555,7 @@ func (m *NailsMaster) GetJobMetadata(id string) *pupupu.JobMetadata {
 				}
 
 				return &pupupu.JobMetadata{
-					Id:       kvmItem.Id,
+					Id:       kvsItem.Id,
 					Metadata: node.GetMetadata(),
 				}
 			}
@@ -411,9 +591,9 @@ func (m *NailsMaster) GetJobDataReader(id string) pupupu.JobDataReader {
 		return nil
 	}
 
-	if kvmItem, ok := item.(KVSItem); ok {
-		if kvmItem.Kind == KVSItemTypeJob {
-			if kvmItem.Status == pupupu.StatusComplete {
+	if kvsItem, ok := item.(KVSItem); ok {
+		if kvsItem.Kind == KVSItemTypeJob {
+			if kvsItem.Status == pupupu.StatusComplete {
 				// Query node from storage
 				node, err := m.storage.GetByName(id)
 				if err != nil {

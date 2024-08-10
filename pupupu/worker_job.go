@@ -7,4 +7,7 @@ type WorkerJob struct {
 
 	// Real Job
 	Job *Job
+
+	// Callback for result
+	Callback Callback
 }

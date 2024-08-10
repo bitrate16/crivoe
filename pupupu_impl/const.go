@@ -1,3 +1,3 @@
 package pupupu_impl
 
-const NAILS_LENGTH = 24
+const NAILS_LENGTH = 32

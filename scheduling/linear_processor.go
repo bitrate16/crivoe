@@ -49,5 +49,3 @@ func (q *LinearProcessor) GetWorker(workerType string) (BasicWorker, error) {
 
 	return nil, fmt.Errorf("worker for %s does not exist", workerType)
 }
-
-func

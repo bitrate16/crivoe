@@ -10,4 +10,7 @@ type WorkerTask struct {
 
 	// Container jobs
 	Jobs []*WorkerJob
+
+	// Callback for result
+	Callback Callback
 }

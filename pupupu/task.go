@@ -5,6 +5,7 @@ type Task struct {
 	// Worker type for this task
 	Type string `json:"type"`
 
+	// TODO: Implement handling of MaxRetries
 	// Max retries of the task
 	MaxRetries int `json:"max_retries"`
 

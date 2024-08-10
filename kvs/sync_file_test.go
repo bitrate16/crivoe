@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestFileKVSCreate(t *testing.T) {
-	testDirName := "test-TestFileKVSCreate"
+func TestSyncFileKVSCreate(t *testing.T) {
+	testDirName := "test-TestSyncFileKVSCreate"
 
 	t.Cleanup(func() {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
@@ -27,14 +27,14 @@ func TestFileKVSCreate(t *testing.T) {
 	assert.False(t, kvs.isOpen)
 }
 
-func TestFileKVSSet(t *testing.T) {
-	testDirName := "test-TestFileKVSSet"
+func TestSyncFileKVSSet(t *testing.T) {
+	testDirName := "test-TestSyncFileKVSSet"
 
 	t.Cleanup(func() {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
@@ -143,14 +143,14 @@ func TestFileKVSSet(t *testing.T) {
 	assert.False(t, kvs.isOpen)
 }
 
-func TestFileKVSSetRewrite(t *testing.T) {
-	testDirName := "test-TestFileKVSSetRewrite"
+func TestSyncFileKVSSetRewrite(t *testing.T) {
+	testDirName := "test-TestSyncFileKVSSetRewrite"
 
 	t.Cleanup(func() {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
@@ -231,14 +231,14 @@ func checkFullContains(a []string, b []string) bool {
 	return true
 }
 
-func TestFileKVSList(t *testing.T) {
-	testDirName := "test-TestFileKVSList"
+func TestSyncFileKVSList(t *testing.T) {
+	testDirName := "test-TestSyncFileKVSList"
 
 	t.Cleanup(func() {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
@@ -278,14 +278,14 @@ func TestFileKVSList(t *testing.T) {
 	assert.False(t, kvs.isOpen)
 }
 
-func TestFileKVSDelete(t *testing.T) {
-	testDirName := "test-TestFileKVSDelete"
+func TestSyncFileKVSDelete(t *testing.T) {
+	testDirName := "test-TestSyncFileKVSDelete"
 
 	t.Cleanup(func() {
 		os.RemoveAll(testDirName)
 	})
 
-	kvs := NewFileKVS(testDirName)
+	kvs := NewSyncFileKVS(testDirName)
 	assert.NotNil(t, kvs)
 
 	err := kvs.Open()
