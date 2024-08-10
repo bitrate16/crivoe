@@ -60,7 +60,6 @@ func create(w http.ResponseWriter, req *http.Request) {
 			},
 			func(jobResult *pupupu.JobResult) {
 				fmt.Printf("jobCallback(%+v)\n", jobResult)
-
 			},
 		),
 	)
@@ -186,7 +185,11 @@ func main() {
 	}
 
 	// Master lifecycle
-	master.Start()
+	err := master.Start()
+	if err != nil {
+		fmt.Printf("No nails today: %v\n", err)
+		return
+	}
 	// defer master.Stop()
 
 	signalChan := make(chan os.Signal, 1)
@@ -206,5 +209,6 @@ func main() {
 	// Start it
 	address := args.Host + ":" + strconv.Itoa(args.Port)
 	fmt.Printf("Server listening on %s\n", address)
-	http.ListenAndServe(address, mux)
+	err = http.ListenAndServe(address, mux)
+	fmt.Printf("No uwu: %v\n", err)
 }

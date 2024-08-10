@@ -1,6 +1,7 @@
 package pupupu_impl
 
 import (
+	"crivoe/helper"
 	"crivoe/kvs"
 	"crivoe/pupupu"
 	"errors"
@@ -16,7 +17,7 @@ type NailsMaster struct {
 	lock        sync.Mutex
 	isOpen      bool
 	kvs         kvs.KVS
-	storage     *bloby.FileStorage
+	storage     bloby.Storage
 	queue       pupupu.WaitQueue
 	workers     map[string]pupupu.Worker
 	memoryMode  bool
@@ -33,9 +34,12 @@ func NewNailsMaster(
 	} else {
 		kvsBackend = kvs.NewSyncFileKVS(storagePath)
 	}
+
+	storageBackend := bloby.NewFileStorage(storagePath)
+
 	return &NailsMaster{
 		kvs:         kvsBackend,
-		storage:     bloby.NewFileStorage(storagePath),
+		storage:     storageBackend,
 		queue:       NewLinkedWaitQueue(),
 		workers:     make(map[string]pupupu.Worker),
 		memoryMode:  memoryMode,
@@ -93,7 +97,7 @@ func (m *NailsMaster) masterSession() {
 				continue
 			}
 
-			fmt.Printf("Task to dispatch: %+v\n", task)
+			// fmt.Printf("Task to dispatch: %+v\n", task)
 
 			// Find worker for task
 			worker, err := m.GetWorker(task.Task.Type)
@@ -133,6 +137,7 @@ func (m *NailsMaster) masterSession() {
 							return
 						}
 
+						// TODO: Better type conversion
 						kvsItem, err := ConvertToKVSItem(item)
 						if err == nil {
 							if kvsItem.Kind == KVSItemTypeTask {
@@ -142,12 +147,11 @@ func (m *NailsMaster) masterSession() {
 								err := m.kvs.Set(taskResult.Task.Id, kvsItem)
 								if err != nil {
 									fmt.Printf("Set Task %s in KVS Error: %v\n", taskResult.Task.Id, err)
-
-									// Notify upstream
-									task.Callback.TaskCallback(taskResult)
-									return
 								}
-								fmt.Printf("Setting status to %+v\n", kvsItem)
+
+								// Notify upstream
+								task.Callback.TaskCallback(taskResult)
+								return
 							}
 
 							// Not Task
@@ -183,6 +187,7 @@ func (m *NailsMaster) masterSession() {
 							return
 						}
 
+						// TODO: Better type conversion
 						kvsItem, err := ConvertToKVSItem(item)
 						if err == nil {
 							if kvsItem.Kind == KVSItemTypeJob {
@@ -192,11 +197,11 @@ func (m *NailsMaster) masterSession() {
 								err := m.kvs.Set(jobResult.Job.Id, kvsItem)
 								if err != nil {
 									fmt.Printf("Set Job %s in KVS Error: %v\n", jobResult.Job.Id, err)
-
-									// Notify upstream
-									task.Callback.JobCallback(jobResult)
-									return
 								}
+
+								// Notify upstream
+								task.Callback.JobCallback(jobResult)
+								return
 							}
 
 							// Not Task
@@ -234,8 +239,8 @@ func (m *NailsMaster) Start() error {
 	}
 
 	// Open KVS
-	if kvsOpenClose, ok := m.kvs.(kvs.OpenClose); ok {
-		err = kvsOpenClose.Open()
+	if kvsOpenClose, ok := m.kvs.(helper.OpenClose); ok {
+		err := kvsOpenClose.Open()
 		if err != nil {
 			// Cascade back
 			err2 := m.storage.Close()
@@ -257,7 +262,6 @@ func (m *NailsMaster) Start() error {
 }
 
 func (m *NailsMaster) Stop() error {
-	fmt.Println("STOPPPPPPPPPPPPPPPPPP")
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -272,7 +276,7 @@ func (m *NailsMaster) Stop() error {
 
 	err1 := m.storage.Close()
 	var err2 error
-	if kvsOpenClose, ok := m.kvs.(kvs.OpenClose); ok {
+	if kvsOpenClose, ok := m.kvs.(helper.OpenClose); ok {
 		err2 = kvsOpenClose.Close()
 	}
 
@@ -285,7 +289,7 @@ func (m *NailsMaster) Stop() error {
 		return err2
 	}
 
-	// Drop all
+	// Drop storage
 	if m.memoryMode {
 		os.RemoveAll(m.storagePath)
 	}
@@ -308,28 +312,10 @@ func (m *NailsMaster) Add(task *pupupu.Task, callback pupupu.Callback) *pupupu.T
 		return nil
 	}
 
-	// // Query lastid from KVS
-	// lastIdObj, err := m.kvs.Get("last_id")
-	// if err != nil {
-	// 	lastIdObj = 0
-	// }
-
-	// lastIdStr, ok := lastIdObj.(string)
-	// if !ok {
-	// 	lastIdStr = "0"
-	// }
-
-	// lastId, err := strconv.ParseInt(lastIdStr, 10, 64)
-	// if err != nil {
-	// 	lastId = 0
-	// }
-
 	// Create spec
 	var taskSpec pupupu.TaskSpec
 	taskSpec.Type = task.Type
 	taskSpec.Id = RandStringRunes(NAILS_LENGTH)
-	// taskSpec.Id = strconv.FormatInt(lastId, 16)
-	// lastId += 1
 	taskSpec.JobSpecs = make([]*pupupu.JobSpec, 0, len(task.Jobs))
 
 	// Create Worker Task
@@ -347,13 +333,10 @@ func (m *NailsMaster) Add(task *pupupu.Task, callback pupupu.Callback) *pupupu.T
 	kvsTask.Id = taskSpec.Id
 
 	// Map jobs
-	for index, job := range task.Jobs {
-		fmt.Printf("Done %d\n", index)
+	for _, job := range task.Jobs {
 		// Create Job Spec
 		var jobSpec pupupu.JobSpec
 		jobSpec.Id = RandStringRunes(NAILS_LENGTH)
-		// jobSpec.Id = strconv.FormatInt(lastId, 16)
-		// lastId += 1
 
 		// Create Worker Job
 		var workerJob pupupu.WorkerJob
@@ -380,11 +363,6 @@ func (m *NailsMaster) Add(task *pupupu.Task, callback pupupu.Callback) *pupupu.T
 		// Push KVS Item
 		m.kvs.Set(kvsJob.Id, kvsJob)
 	}
-
-	// err = m.kvs.Set("last_id", strconv.FormatInt(lastId, 10))
-	// if err != nil {
-	// 	fmt.Printf("Failed save lastID: %v\n", err)
-	// }
 
 	// Push KVS Item
 	m.kvs.Set(kvsTask.Id, kvsTask)

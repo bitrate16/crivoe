@@ -1,6 +1,8 @@
 package pupupu_impl
 
-import "sync"
+import (
+	"sync"
+)
 
 type wq_chain struct {
 	next  *wq_chain
