@@ -7,4 +7,7 @@ type TaskStatus struct {
 
 	// Task status
 	Status string `json:"status"`
+
+	// Jobs statuses
+	Jobs []*JobStatus `json:"jobs"`
 }

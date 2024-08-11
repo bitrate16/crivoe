@@ -27,6 +27,9 @@ func (w *DebugWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, call
 			Status: pupupu.StatusComplete,
 			Job:    job,
 		})
+
+		fmt.Printf("Sleep for %v\n", DEBUG_DELAY)
+		time.Sleep(DEBUG_DELAY)
 	}
 
 	fmt.Printf("Mark COMPLETE Task ID: %s\n", task.Id)

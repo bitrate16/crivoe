@@ -48,6 +48,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 			method := tryGetString(job.Job.Options, "method", "GET")
 			url := tryGetString(job.Job.Options, "url", "")
 			timeout := tryGetUInt64OrCastFloat64(job.Job.Options, "timeout", 10000)
+			headers := tryGetStringMap(job.Job.Options, "headers", make(map[string]interface{}))
 
 			timestamp_start := time.Now()
 
@@ -67,6 +68,20 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 				continue JobLoop
 			}
 
+			// Apply headers
+			for header, value := range headers {
+				if valueStr, ok := value.(string); ok {
+					req.Header.Set(header, valueStr)
+				}
+			}
+
+			// Apply Host header
+			if value, ok := headers["Host"]; ok {
+				if valueStr, ok := value.(string); ok {
+					req.Host = valueStr
+				}
+			}
+
 			resp, err := client.Do(req)
 			if err != nil {
 				if DEBUG {
@@ -81,9 +96,9 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 			defer resp.Body.Close()
 
 			// Save headers
-			headers := make(map[string][]string)
+			responseHeaders := make(map[string][]string)
 			for k, v := range resp.Header {
-				headers[k] = v
+				responseHeaders[k] = v
 			}
 
 			timestamp_end := time.Now()
@@ -94,7 +109,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 			metadata["options"] = job.Job.Options
 			metadata["timestamp"] = timestamp_start.UnixMilli()
 			metadata["duration"] = timestamp_end.UnixMilli() - timestamp_start.UnixMilli()
-			metadata["headers"] = headers
+			metadata["headers"] = responseHeaders
 			metadata["method"] = method
 			metadata["url"] = url
 			metadata["job_status"] = pupupu.StatusUndefined

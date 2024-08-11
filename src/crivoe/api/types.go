@@ -28,7 +28,19 @@ type HTTPJobSpec struct {
 	Id string `json:"id"`
 }
 
-type HTTPStatus struct {
+type HTTPJobStatus struct {
 	Id     string `json:"id"`
 	Status string `json:"status"`
+}
+
+type HTTPTaskStatus struct {
+	Id     string           `json:"id"`
+	Status string           `json:"status"`
+	Jobs   []*HTTPJobStatus `json:"jobs"`
+}
+
+type HTTPTaskMetadata struct {
+	Id       string      `json:"id"`
+	Status   string      `json:"status"`
+	Metadata interface{} `json:"metadata"`
 }

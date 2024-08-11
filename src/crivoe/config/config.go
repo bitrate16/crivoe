@@ -3,12 +3,13 @@ package config
 import "flag"
 
 type Config struct {
-	Debug       bool
-	Log         bool
-	MemoryMode  bool
-	StoragePath string
-	Port        int
-	Host        string
+	DisplayVersion bool
+	Debug          bool
+	Log            bool
+	MemoryMode     bool
+	StoragePath    string
+	Port           int
+	Host           string
 }
 
 var config *Config
@@ -56,6 +57,13 @@ func parseConfig() {
 		"log",
 		false,
 		"progress logging",
+	)
+
+	flag.BoolVar(
+		&args.DisplayVersion,
+		"version",
+		false,
+		"display version",
 	)
 
 	flag.Parse()

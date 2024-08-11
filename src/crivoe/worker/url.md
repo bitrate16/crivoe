@@ -15,7 +15,11 @@ Sample payload:
             "options": {
                 "url": "https://google.com/search?q=cat",
                 "method": "GET",
-                "timeout": 1000
+                "timeout": 1000,
+                "headers": {
+                    "User-Agent": "NoodleBot/1.2 compatible",
+                    "Authorization": "uwu"
+                }
             }
         },
         {

@@ -500,19 +500,33 @@ func (m *NailsMaster) GetTaskStatus(id string) *pupupu.TaskStatus {
 		return nil
 	}
 
-	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Type == KVSItemTypeTask {
-			return &pupupu.TaskStatus{
-				Id:     kvsItem.Id,
-				Status: kvsItem.Status,
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if kvsItem.Type == KVSItemTypeTask {
+		var taskStatus pupupu.TaskStatus
+		taskStatus.Id = kvsItem.Id
+		taskStatus.Status = kvsItem.Status
+		taskStatus.Jobs = make([]*pupupu.JobStatus, 0)
+
+		for _, job := range kvsItem.JobIds {
+			var jobStatus pupupu.JobStatus
+			jobStatus.Id = job
+
+			item, err := m.kvs.Get(job)
+			if err != nil {
+				fmt.Printf("GetTaskStatus Get Job Error: %v\n", err)
+				jobStatus.Status = pupupu.StatusUndefined
+			} else {
+				kvsJobItem := UnsafeConvertToKVSItem(item)
+				jobStatus.Status = kvsJobItem.Status
 			}
+
+			taskStatus.Jobs = append(taskStatus.Jobs, &jobStatus)
 		}
 
-		// Not Task
-		return nil
+		return &taskStatus
 	}
 
-	fmt.Printf("GetTaskStatus Error: invalid type %T\n", item)
+	// Not Task
 	return nil
 }
 
@@ -535,19 +549,15 @@ func (m *NailsMaster) GetJobStatus(id string) *pupupu.JobStatus {
 		return nil
 	}
 
-	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Type == KVSItemTypeJob {
-			return &pupupu.JobStatus{
-				Id:     kvsItem.Id,
-				Status: kvsItem.Status,
-			}
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if kvsItem.Type == KVSItemTypeJob {
+		return &pupupu.JobStatus{
+			Id:     kvsItem.Id,
+			Status: kvsItem.Status,
 		}
-
-		// Not Job
-		return nil
 	}
 
-	fmt.Printf("GetJobStatus Error: invalid type %T\n", item)
+	// Not Job
 	return nil
 }
 
@@ -570,35 +580,32 @@ func (m *NailsMaster) GetTaskMetadata(id string) *pupupu.TaskMetadata {
 		return nil
 	}
 
-	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Type == KVSItemTypeTask {
-			if kvsItem.Status == pupupu.StatusComplete {
-				// Query node from storage
-				node, err := m.storage.GetByName(id)
-				if err != nil {
-					fmt.Printf("GetTaskMetadata Error: %v\n", err)
-					return nil
-				}
-
-				if node == nil {
-					return nil
-				}
-
-				return &pupupu.TaskMetadata{
-					Id:       kvsItem.Id,
-					Metadata: node.GetMetadata(),
-				}
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if kvsItem.Type == KVSItemTypeTask {
+		if kvsItem.Status == pupupu.StatusComplete {
+			// Query node from storage
+			node, err := m.storage.GetByName(id)
+			if err != nil {
+				fmt.Printf("GetTaskMetadata Error: %v\n", err)
+				return nil
 			}
 
-			// Not completed
-			return nil
+			if node == nil {
+				return nil
+			}
+
+			return &pupupu.TaskMetadata{
+				Id:       kvsItem.Id,
+				Status:   kvsItem.Status,
+				Metadata: node.GetMetadata(),
+			}
 		}
 
-		// Not Task
+		// Not completed
 		return nil
 	}
 
-	fmt.Printf("GetTaskMetadata Error: invalid type %T\n", item)
+	// Not Task
 	return nil
 }
 
@@ -621,35 +628,32 @@ func (m *NailsMaster) GetJobMetadata(id string) *pupupu.JobMetadata {
 		return nil
 	}
 
-	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Type == KVSItemTypeJob {
-			if kvsItem.Status == pupupu.StatusComplete {
-				// Query node from storage
-				node, err := m.storage.GetByName(id)
-				if err != nil {
-					fmt.Printf("GetJobMetadata Error: %v\n", err)
-					return nil
-				}
-
-				if node == nil {
-					return nil
-				}
-
-				return &pupupu.JobMetadata{
-					Id:       kvsItem.Id,
-					Metadata: node.GetMetadata(),
-				}
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if kvsItem.Type == KVSItemTypeJob {
+		if kvsItem.Status == pupupu.StatusComplete {
+			// Query node from storage
+			node, err := m.storage.GetByName(id)
+			if err != nil {
+				fmt.Printf("GetJobMetadata Error: %v\n", err)
+				return nil
 			}
 
-			// Not completed
-			return nil
+			if node == nil {
+				return nil
+			}
+
+			return &pupupu.JobMetadata{
+				Id:       kvsItem.Id,
+				Status:   kvsItem.Status,
+				Metadata: node.GetMetadata(),
+			}
 		}
 
-		// Not Job
+		// Not completed
 		return nil
 	}
 
-	fmt.Printf("GetJobMetadata Error: invalid type %T\n", item)
+	// Not Job
 	return nil
 }
 
@@ -672,36 +676,32 @@ func (m *NailsMaster) GetJobDataReader(id string) pupupu.JobDataReader {
 		return nil
 	}
 
-	if kvsItem, ok := item.(KVSItem); ok {
-		if kvsItem.Type == KVSItemTypeJob {
-			if kvsItem.Status == pupupu.StatusComplete {
-				// Query node from storage
-				node, err := m.storage.GetByName(id)
-				if err != nil {
-					fmt.Printf("GetJobMetadata Error: %v\n", err)
-					return nil
-				}
-
-				if node == nil {
-					return nil
-				}
-
-				if readableNode, ok := node.(bloby.Readable); ok {
-					return pupupu.JobDataReaderFunc(readableNode.GetReader)
-				}
-
-				// Not readable
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if kvsItem.Type == KVSItemTypeJob {
+		if kvsItem.Status == pupupu.StatusComplete {
+			// Query node from storage
+			node, err := m.storage.GetByName(id)
+			if err != nil {
+				fmt.Printf("GetJobMetadata Error: %v\n", err)
 				return nil
 			}
 
-			// Not completed
+			if node == nil {
+				return nil
+			}
+
+			if readableNode, ok := node.(bloby.Readable); ok {
+				return pupupu.JobDataReaderFunc(readableNode.GetReader)
+			}
+
+			// Not readable
 			return nil
 		}
 
-		// Not Job
+		// Not completed
 		return nil
 	}
 
-	fmt.Printf("GetJobMetadata Error: invalid type %T\n", item)
+	// Not Job
 	return nil
 }
