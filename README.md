@@ -53,3 +53,4 @@ Reference: [types.go](src/crivoe/api/types.go)
 
 * Handle Task `Maxretries`
 * Parallel downloader worker
+* Delete storage data on TTL
