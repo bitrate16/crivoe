@@ -133,6 +133,7 @@ func (m *NailsMaster) masterSession() {
 					&pupupu.TaskResult{
 						Status: pupupu.StatusFail,
 						Result: err,
+						Task:   task,
 					},
 				)
 				continue

@@ -59,6 +59,16 @@ func create(w http.ResponseWriter, req *http.Request) {
 					fmt.Printf("taskCallback(%+v)\n", taskResult)
 				}
 
+				if taskResult == nil {
+					fmt.Printf("taskCallback(%+v): TaskResult is nil", taskResult)
+					return
+				}
+
+				if taskResult.Task == nil {
+					fmt.Printf("taskCallback(%+v): TaskResult.Task is nil", taskResult.Task)
+					return
+				}
+
 				if args.Log {
 					fmt.Printf("Task Done: %s\n", taskResult.Task.Id)
 				}
@@ -66,6 +76,16 @@ func create(w http.ResponseWriter, req *http.Request) {
 			func(jobResult *pupupu.JobResult) {
 				if args.Debug {
 					fmt.Printf("jobCallback(%+v)\n", jobResult)
+				}
+
+				if jobResult == nil {
+					fmt.Printf("jobCallback(%+v): JobResult is nil", jobResult)
+					return
+				}
+
+				if jobResult.Job == nil {
+					fmt.Printf("jobCallback(%+v): JobResult.Job is nil", jobResult.Job)
+					return
 				}
 
 				if args.Log {
