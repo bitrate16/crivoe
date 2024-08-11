@@ -1,8 +1,9 @@
 package worker
 
 import (
-	"crivoe/scheduling"
+	"crivoe/pupupu"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -10,141 +11,185 @@ import (
 	"github.com/bitrate16/bloby"
 )
 
-type UrlWorker struct {
-	storage bloby.Storage
-}
+type UrlWorker struct{}
 
-func NewUrlWorker(storage bloby.Storage) *UrlWorker {
-	return &UrlWorker{
-		storage: storage,
-	}
+func NewUrlWorker() *UrlWorker {
+	return &UrlWorker{}
 }
 
 // Oneshot url downloader
-func (w *UrlWorker) Launch(task *scheduling.BasicTask, callback scheduling.BasicCallback) {
-	var result scheduling.BasicCallbackResult
+func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callback pupupu.Callback) {
 
-	if task == nil {
-		result.Status = scheduling.BasicCallbackStatusError
-		result.Result = errors.New("task is nil")
-		callback.Done(&result)
-		return
-	}
-
+	// Just fire goroutine
 	go func() {
-		options, ok := task.Options.(*WorkerOptions)
-		if !ok {
-			result.Status = scheduling.BasicCallbackStatusError
-			result.Result = errors.New("missing options")
-			callback.Done(&result)
-			return
+		if DEBUG {
+			fmt.Printf("Task %s started\n", task.Id)
 		}
 
-		method := tryGetString(options.Options, "method", "GET")
-		url := tryGetString(options.Options, "url", "")
-		timeout := tryGetUInt64(options.Options, "timeout", 10000)
-		timestamp := time.Now()
+		var taskResult pupupu.TaskResult
+		taskResult.Task = task
 
-		client := &http.Client{}
-		req, err := http.NewRequest(method, url, nil)
-		if err != nil {
-			result.Status = scheduling.BasicCallbackStatusError
-			result.Result = err
-			callback.Done(&result)
-			return
-		}
-		client.Timeout = time.Duration(timeout) * time.Millisecond
+		delay := tryGetUInt64OrCastFloat64(task.Task.Options, "delay", 0)
 
-		resp, err := client.Do(req)
-		if err != nil {
-			result.Status = scheduling.BasicCallbackStatusError
-			result.Result = err
-			callback.Done(&result)
-			return
-		}
-		defer resp.Body.Close()
+	JobLoop:
+		for index, job := range task.Jobs {
+			if index != 0 && delay != 0 {
+				time.Sleep(time.Duration(delay) * time.Millisecond)
+			}
 
-		// Save headers
-		headers := make(map[string][]string)
-		for k, v := range resp.Header {
-			headers[k] = v
-		}
+			if DEBUG {
+				fmt.Printf("Job (%d / %d) %s started\n", index+1, len(task.Jobs), job.Id)
+				fmt.Printf("Job (%d / %d) %s Options: %+v\n", index+1, len(task.Jobs), job.Id, job.Job.Options)
+			}
 
-		// Create metadata
-		metadata := make(map[string]interface{})
-		metadata["id"] = options.Id
-		metadata["options"] = options.Options
-		metadata["timestamp"] = timestamp
-		metadata["headers"] = headers
-		metadata["method"] = method
-		metadata["url"] = url
-		metadata["status"] = "undefined"
+			var jobResult pupupu.JobResult
+			jobResult.Job = job
 
-		// TODO: Do not delete node, but update metadata on errors and/or success
-		var node bloby.Node
-		has := false
+			method := tryGetString(job.Job.Options, "method", "GET")
+			url := tryGetString(job.Job.Options, "url", "")
+			timeout := tryGetUInt64OrCastFloat64(job.Job.Options, "timeout", 10000)
 
-		if exists, err := w.storage.ExistsByName(options.Id); exists {
-			if err == nil {
-				n, err := w.storage.GetByReference(options.Id)
+			timestamp_start := time.Now()
+
+			client := &http.Client{
+				Timeout: time.Duration(timeout) * time.Millisecond,
+			}
+
+			req, err := http.NewRequest(method, url, nil)
+			if err != nil {
+				if DEBUG {
+					fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
+				}
+
+				jobResult.Status = pupupu.StatusFail
+				jobResult.Result = err
+				callback.JobCallback(&jobResult)
+				continue JobLoop
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				if DEBUG {
+					fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
+				}
+
+				jobResult.Status = pupupu.StatusFail
+				jobResult.Result = err
+				callback.JobCallback(&jobResult)
+				continue JobLoop
+			}
+			defer resp.Body.Close()
+
+			// Save headers
+			headers := make(map[string][]string)
+			for k, v := range resp.Header {
+				headers[k] = v
+			}
+
+			timestamp_end := time.Now()
+
+			// Create metadata
+			metadata := make(map[string]interface{})
+			metadata["id"] = job.Id
+			metadata["options"] = job.Job.Options
+			metadata["timestamp"] = timestamp_start.UnixMilli()
+			metadata["duration"] = timestamp_end.UnixMilli() - timestamp_start.UnixMilli()
+			metadata["headers"] = headers
+			metadata["method"] = method
+			metadata["url"] = url
+			metadata["job_status"] = pupupu.StatusUndefined
+
+			var node bloby.Node
+			has := false
+
+			if exists, err := master.GetStorage().ExistsByName(job.Id); exists {
 				if err == nil {
-					has = true
-					node = n
+					n, err := master.GetStorage().GetByReference(job.Id)
+					if err == nil {
+						has = true
+						node = n
+					}
 				}
 			}
+			if !has {
+				n, err := master.GetStorage().Create(
+					job.Id,
+					metadata,
+				)
+
+				if err != nil {
+					if DEBUG {
+						fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
+					}
+
+					jobResult.Status = pupupu.StatusFail
+					jobResult.Result = err
+					callback.JobCallback(&jobResult)
+					continue JobLoop
+				}
+
+				node = n
+			}
+
+			if writable, ok := node.(bloby.Writable); ok {
+
+				writer, err := writable.GetWriter()
+				if err != nil {
+					if DEBUG {
+						fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
+					}
+
+					jobResult.Status = pupupu.StatusFail
+					jobResult.Result = err
+					callback.JobCallback(&jobResult)
+					continue JobLoop
+				}
+
+				_, err = io.Copy(writer, resp.Body)
+				if err != nil {
+					if DEBUG {
+						fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
+					}
+
+					jobResult.Status = pupupu.StatusFail
+					jobResult.Result = err
+					callback.JobCallback(&jobResult)
+					continue JobLoop
+				}
+
+				// Update metadata
+				if mutable, ok := node.(bloby.Mutable); ok {
+					metadata["job_status"] = pupupu.StatusComplete
+					metadata["status"] = resp.Status
+					metadata["status_code"] = resp.StatusCode
+					mutable.SetMetadata(metadata)
+				}
+
+				if closer, ok := writer.(io.Closer); ok {
+					closer.Close()
+				}
+
+				if DEBUG {
+					fmt.Printf("Job (%d / %d) %s completed\n", index+1, len(task.Jobs), job.Id)
+				}
+
+				jobResult.Status = pupupu.StatusComplete
+				jobResult.Result = metadata
+				callback.JobCallback(&jobResult)
+
+			} else {
+				jobResult.Status = pupupu.StatusFail
+				jobResult.Result = errors.New("storage not writable")
+				callback.JobCallback(&jobResult)
+			}
 		}
-		if !has {
-			n, err := w.storage.Create(
-				options.Id,
-				metadata,
-			)
 
-			if err != nil {
-				result.Status = scheduling.BasicCallbackStatusError
-				result.Result = err
-				callback.Done(&result)
-				return
-			}
-
-			node = n
+		if DEBUG {
+			fmt.Printf("Task %s completed\n", task.Id)
 		}
 
-		if writable, ok := node.(bloby.Writable); ok {
-
-			writer, err := writable.GetWriter()
-			if err != nil {
-				result.Status = scheduling.BasicCallbackStatusError
-				result.Result = err
-				callback.Done(&result)
-				return
-			}
-
-			_, err = io.Copy(writer, resp.Body)
-			if err != nil {
-				result.Status = scheduling.BasicCallbackStatusError
-				result.Result = err
-				callback.Done(&result)
-				return
-			}
-
-			if mutable, ok := node.(bloby.Mutable); ok {
-				metadata["status"] = "done"
-				mutable.SetMetadata(metadata)
-			}
-
-			if closer, ok := writer.(io.Closer); ok {
-				closer.Close()
-			}
-
-			result.Status = scheduling.BasicCallbackStatusComplete
-			result.Result = nil
-			callback.Done(&result)
-
-		} else {
-			result.Status = scheduling.BasicCallbackStatusError
-			result.Result = errors.New("storage not writable")
-			callback.Done(&result)
-			return
-		}
+		taskResult.Status = pupupu.StatusComplete
+		taskResult.Result = nil
+		callback.TaskCallback(&taskResult)
 	}()
 }

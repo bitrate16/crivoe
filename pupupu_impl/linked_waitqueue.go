@@ -88,13 +88,13 @@ func (c *LinkedWaitQueue) Cancel(sink interfaces.WaitQueueSink) {
 
 	needUnblock := c.first == nil
 
-	c.drop = true
 	for c.first != nil {
 		value := c.first.value
 		c.first = c.first.next
 
 		sink.Handle(value)
 	}
+	c.drop = true
 	c.last = nil
 
 	if needUnblock {

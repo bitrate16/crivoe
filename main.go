@@ -18,6 +18,7 @@ import (
 )
 
 var master *pupupu_impl.NailsMaster
+var args *config.Config
 
 // POST New scrape task
 // Sample:
@@ -56,10 +57,22 @@ func create(w http.ResponseWriter, req *http.Request) {
 		&task,
 		pupupu.NewCallbackWrap(
 			func(taskResult *pupupu.TaskResult) {
-				fmt.Printf("taskCallback(%+v)\n", taskResult)
+				if args.Debug {
+					fmt.Printf("taskCallback(%+v)\n", taskResult)
+				}
+
+				if args.Log {
+					fmt.Printf("Task Done: %s\n", taskResult.Task.Id)
+				}
 			},
 			func(jobResult *pupupu.JobResult) {
-				fmt.Printf("jobCallback(%+v)\n", jobResult)
+				if args.Debug {
+					fmt.Printf("jobCallback(%+v)\n", jobResult)
+				}
+
+				if args.Log {
+					fmt.Printf("Job Done: %s\n", jobResult.Job.Id)
+				}
 			},
 		),
 	)
@@ -69,12 +82,20 @@ func create(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if args.Log {
+		fmt.Printf("Task Created: %s\n", taskSpec.Id)
+	}
+
 	var taskSpecHTTP api.HTTPTaskSpec
 	taskSpecHTTP.Id = taskSpec.Id
 	taskSpecHTTP.JobIds = make([]string, 0)
 
 	for _, jobSpec := range taskSpec.JobSpecs {
 		taskSpecHTTP.JobIds = append(taskSpecHTTP.JobIds, jobSpec.Id)
+
+		if args.Log {
+			fmt.Printf("Job Created: %s\n", jobSpec.Id)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -173,13 +194,16 @@ func create(w http.ResponseWriter, req *http.Request) {
 func main() {
 	rand.Seed(uint64(time.Now().UnixNano()))
 
-	args := config.GetConfig()
+	args = config.GetConfig()
 
-	fmt.Printf("Args: %+v\n", args)
+	if args.Debug {
+		fmt.Printf("Args: %+v\n", args)
+	}
 
-	master = pupupu_impl.NewNailsMaster(args.StoragePath, args.MemoryMode)
+	master = pupupu_impl.NewNailsMaster(args.StoragePath, args.MemoryMode, args.Debug)
 
 	// Register workers
+	worker.SetDebug(args.Debug)
 	for key, value := range worker.GetRegistry() {
 		master.RegisterWorker(key, value)
 	}
@@ -196,6 +220,7 @@ func main() {
 	signal.Notify(signalChan, os.Interrupt)
 	go func() {
 		<-signalChan
+		fmt.Println("Stopping")
 		master.Stop()
 		os.Exit(0)
 	}()

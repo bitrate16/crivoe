@@ -4,6 +4,7 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -272,6 +273,97 @@ func TestSyncFileKVSList(t *testing.T) {
 	keysKVS, err = kvs.List()
 	assert.NoError(t, err)
 	assert.True(t, checkFullContains(keys, keysKVS))
+
+	err = kvs.Close()
+	assert.NoError(t, err)
+	assert.False(t, kvs.isOpen)
+}
+
+func TestSyncFileKVSKeyIterator(t *testing.T) {
+	testDirName := "test-TestSyncFileKVSKeyIterator"
+
+	t.Cleanup(func() {
+		os.RemoveAll(testDirName)
+	})
+
+	kvs := NewSyncFileKVS(testDirName, NewDefaultSerializer())
+	assert.NotNil(t, kvs)
+
+	err := kvs.Open()
+	assert.NoError(t, err)
+	assert.True(t, kvs.isOpen)
+
+	keys := make([]string, 0)
+	for index := range 100 {
+
+		key := "key_" + strconv.Itoa(index)
+		value := "value_" + strconv.Itoa(index)
+		keys = append(keys, key)
+
+		err = kvs.Set(key, value)
+		assert.NoError(t, err)
+	}
+
+	iterator := kvs.KeyIterator()
+
+	iteratorKeys := make([]string, 0)
+
+	done := make(chan struct{})
+	go func() {
+		for {
+			key, has := iterator.Next()
+			if !has {
+				break
+			}
+
+			iteratorKeys = append(iteratorKeys, key)
+		}
+
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.FailNow()
+	}
+
+	assert.True(t, checkFullContains(keys, iteratorKeys))
+
+	err = kvs.Close()
+	assert.NoError(t, err)
+	assert.False(t, kvs.isOpen)
+
+	// Reopen & check persisting
+	err = kvs.Open()
+	assert.NoError(t, err)
+	assert.True(t, kvs.isOpen)
+
+	iterator = kvs.KeyIterator()
+
+	iteratorKeys = make([]string, 0)
+
+	done = make(chan struct{})
+	go func() {
+		for {
+			key, has := iterator.Next()
+			if !has {
+				break
+			}
+
+			iteratorKeys = append(iteratorKeys, key)
+		}
+
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.FailNow()
+	}
+
+	assert.True(t, checkFullContains(keys, iteratorKeys))
 
 	err = kvs.Close()
 	assert.NoError(t, err)

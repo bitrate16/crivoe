@@ -18,7 +18,7 @@ func (w *DebugWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, call
 		fmt.Printf("     Options: %+v\n", job.Job.Options)
 	}
 
-	fmt.Printf("sleep for %v\n", DEBUG_DELAY)
+	fmt.Printf("Sleep for %v\n", DEBUG_DELAY)
 	time.Sleep(DEBUG_DELAY)
 
 	for _, job := range task.Jobs {

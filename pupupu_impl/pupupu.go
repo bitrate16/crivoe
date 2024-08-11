@@ -40,11 +40,13 @@ type NailsMaster struct {
 	workers     map[string]pupupu.Worker
 	memoryMode  bool
 	storagePath string
+	debug       bool
 }
 
 func NewNailsMaster(
 	storagePath string,
 	memoryMode bool,
+	debug bool,
 ) *NailsMaster {
 	var kvsBackend kvs.KVS
 	if memoryMode {
@@ -62,6 +64,7 @@ func NewNailsMaster(
 		workers:     make(map[string]pupupu.Worker),
 		memoryMode:  memoryMode,
 		storagePath: storagePath,
+		debug:       debug,
 	}
 }
 
@@ -104,7 +107,9 @@ func (m *NailsMaster) masterSession() {
 		for {
 			taskObj, has := m.queue.Pop()
 			if !has {
-				fmt.Println("Queue dropped")
+				if m.debug {
+					fmt.Println("Queue dropped")
+				}
 				m.done <- struct{}{}
 				return
 			}
@@ -115,7 +120,9 @@ func (m *NailsMaster) masterSession() {
 				continue
 			}
 
-			// fmt.Printf("Task to dispatch: %+v\n", task)
+			if m.debug {
+				fmt.Printf("Dispatching task to worker: %+v\n", task)
+			}
 
 			// Find worker for task
 			worker, err := m.GetWorker(task.Task.Type)
@@ -137,6 +144,10 @@ func (m *NailsMaster) masterSession() {
 				m,
 				pupupu.NewCallbackWrap(
 					func(taskResult *pupupu.TaskResult) {
+						if m.debug {
+							fmt.Printf("Received TaskResult %+v\n", taskResult)
+						}
+
 						err := m.setStatusForId(taskResult.Task.Id, taskResult.Status, KVSItemTypeTask)
 						if err != nil {
 							fmt.Printf("%e\n", err)
@@ -146,6 +157,10 @@ func (m *NailsMaster) masterSession() {
 						task.Callback.TaskCallback(taskResult)
 					},
 					func(jobResult *pupupu.JobResult) {
+						if m.debug {
+							fmt.Printf("Received JobResult %+v\n", jobResult)
+						}
+
 						err := m.setStatusForId(jobResult.Job.Id, jobResult.Status, KVSItemTypeJob)
 						if err != nil {
 							fmt.Printf("%e\n", err)
@@ -165,6 +180,7 @@ func (m *NailsMaster) masterSession() {
 // Rewrite all statuses on unfinished tasks to `StatusCancel`
 func (m *NailsMaster) rewriteEntryStatusOnRestart() error {
 	hasAlerted := false
+	// var bar *progressbar.ProgressBar
 
 	iterator := m.kvs.KeyIterator()
 	for {
@@ -176,7 +192,13 @@ func (m *NailsMaster) rewriteEntryStatusOnRestart() error {
 		if !hasAlerted {
 			hasAlerted = true
 			fmt.Println("Validating integrity of KVS")
+
+			// if m.debug {
+			// 	bar = progressbar.Default(-1, "Validating integrity of KVS")
+			// 	defer bar.Close()
+			// }
 		}
+		// bar.Add(1)
 
 		status, err := m.getStatusForId(key, KVSItemTypeUndefined)
 		if err != nil {
@@ -187,7 +209,9 @@ func (m *NailsMaster) rewriteEntryStatusOnRestart() error {
 			status != pupupu.StatusComplete &&
 			status != pupupu.StatusFail {
 
-			fmt.Printf("Recover status for %s: %s\n", key, status)
+			if m.debug {
+				fmt.Printf("Recover status for %s: %s\n", key, status)
+			}
 			err := m.setStatusForId(key, pupupu.StatusCancel, KVSItemTypeUndefined)
 			if err != nil {
 				return err
@@ -287,7 +311,9 @@ func (m *NailsMaster) setStatusForId(id string, status string, expectedType KVSI
 
 	// Patch status
 	kvsItem.Status = status
-	fmt.Printf("Setting status of %s to %s\n", id, status)
+	if m.debug {
+		fmt.Printf("Setting status of %s to %s\n", id, status)
+	}
 
 	// Update status
 	err = m.kvs.Set(id, kvsItem)
@@ -306,10 +332,18 @@ func (m *NailsMaster) Stop() error {
 		return errors.New("Master is closed")
 	}
 
+	if m.debug {
+		fmt.Printf("Cancelling queue\n")
+	}
+
 	// Drop queue & mark all tasks as cancelled
 	m.queue.Cancel(
 		interfaces.WaitQueueSinkFunc(
 			func(value interface{}) {
+				if m.debug {
+					fmt.Printf("Finalizing cancelled task %+v\n", value)
+				}
+
 				task, ok := value.(*pupupu.WorkerTask)
 				if !ok {
 					fmt.Printf("Malformed type for %+v: %T\n", value, value)
@@ -334,6 +368,10 @@ func (m *NailsMaster) Stop() error {
 			},
 		),
 	)
+
+	if m.debug {
+		fmt.Printf("Queue cancelled\n")
+	}
 
 	// Wait for finish
 	<-m.done

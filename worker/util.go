@@ -26,17 +26,21 @@ func tryGetString(m interface{}, key string, def string) string {
 }
 
 // Try cast to string or default
-func tryUInt64(v interface{}, def uint64) uint64 {
+func tryUInt64OrCastFloat64(v interface{}, def uint64) uint64 {
 	if s, ok := v.(uint64); ok {
 		return s
+	}
+
+	if s, ok := v.(float64); ok {
+		return uint64(s)
 	}
 
 	return def
 }
 
 // Try get string value or default
-func tryGetUInt64(m interface{}, key string, def uint64) uint64 {
-	return tryUInt64(getValue(m, key, def), def)
+func tryGetUInt64OrCastFloat64(m interface{}, key string, def uint64) uint64 {
+	return tryUInt64OrCastFloat64(getValue(m, key, def), def)
 }
 
 // Try cast to map[string] or default

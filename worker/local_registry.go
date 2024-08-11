@@ -16,4 +16,5 @@ func init() {
 	registry = make(map[string]pupupu.Worker)
 
 	RegisterWorker("debug", &DebugWorker{})
+	RegisterWorker("url", NewUrlWorker())
 }

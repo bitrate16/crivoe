@@ -3,6 +3,8 @@ package config
 import "flag"
 
 type Config struct {
+	Debug       bool
+	Log         bool
 	MemoryMode  bool
 	StoragePath string
 	Port        int
@@ -40,6 +42,20 @@ func parseConfig() {
 		"memory",
 		false,
 		"memory mode",
+	)
+
+	flag.BoolVar(
+		&args.Debug,
+		"debug",
+		false,
+		"debug logging",
+	)
+
+	flag.BoolVar(
+		&args.Log,
+		"log",
+		false,
+		"progress logging",
 	)
 
 	flag.Parse()
