@@ -11,10 +11,14 @@ import (
 	"github.com/bitrate16/bloby"
 )
 
-type UrlWorker struct{}
+type UrlWorker struct {
+	debug bool
+}
 
-func NewUrlWorker() *UrlWorker {
-	return &UrlWorker{}
+func NewUrlWorker(debug bool) *UrlWorker {
+	return &UrlWorker{
+		debug: debug,
+	}
 }
 
 // Oneshot url downloader
@@ -22,7 +26,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 
 	// Just fire goroutine
 	go func() {
-		if DEBUG {
+		if w.debug {
 			fmt.Printf("Task %s started\n", task.Id)
 		}
 
@@ -37,7 +41,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 				time.Sleep(time.Duration(delay) * time.Millisecond)
 			}
 
-			if DEBUG {
+			if w.debug {
 				fmt.Printf("Job (%d / %d) %s started\n", index+1, len(task.Jobs), job.Id)
 				fmt.Printf("Job (%d / %d) %s Options: %+v\n", index+1, len(task.Jobs), job.Id, job.Job.Options)
 			}
@@ -58,7 +62,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 
 			req, err := http.NewRequest(method, url, nil)
 			if err != nil {
-				if DEBUG {
+				if w.debug {
 					fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
 				}
 
@@ -84,7 +88,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 
 			resp, err := client.Do(req)
 			if err != nil {
-				if DEBUG {
+				if w.debug {
 					fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
 				}
 
@@ -133,7 +137,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 				)
 
 				if err != nil {
-					if DEBUG {
+					if w.debug {
 						fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
 					}
 
@@ -150,7 +154,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 
 				writer, err := writable.GetWriter()
 				if err != nil {
-					if DEBUG {
+					if w.debug {
 						fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
 					}
 
@@ -162,7 +166,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 
 				_, err = io.Copy(writer, resp.Body)
 				if err != nil {
-					if DEBUG {
+					if w.debug {
 						fmt.Printf("Job (%d / %d) %s error: %v\n", index+1, len(task.Jobs), job.Id, err)
 					}
 
@@ -184,7 +188,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 					closer.Close()
 				}
 
-				if DEBUG {
+				if w.debug {
 					fmt.Printf("Job (%d / %d) %s completed\n", index+1, len(task.Jobs), job.Id)
 				}
 
@@ -199,7 +203,7 @@ func (w *UrlWorker) Launch(task *pupupu.WorkerTask, master pupupu.Master, callba
 			}
 		}
 
-		if DEBUG {
+		if w.debug {
 			fmt.Printf("Task %s completed\n", task.Id)
 		}
 

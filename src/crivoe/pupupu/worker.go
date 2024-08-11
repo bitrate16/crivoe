@@ -5,10 +5,3 @@ package pupupu
 type Worker interface {
 	Launch(task *WorkerTask, master Master, callback Callback)
 }
-
-// Anonymous function interface implementation
-type WorkerHandler func(task *WorkerTask, master Master, callback Callback)
-
-func (wh WorkerHandler) Launch(task *WorkerTask, master Master, callback Callback) {
-	wh(task, master, callback)
-}

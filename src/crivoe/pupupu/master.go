@@ -14,6 +14,9 @@ type Master interface {
 	GetJobMetadata(id string) *JobMetadata
 	GetJobDataReader(id string) JobDataReader
 
+	// Delete task & all related jobs records & data
+	DeleteTask(id string) error
+
 	// Returns KVS of Master, must not be accessed by anyone except workers
 	GetKVS() kvs.KVS
 

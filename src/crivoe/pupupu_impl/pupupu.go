@@ -124,6 +124,15 @@ func (m *NailsMaster) masterSession() {
 				fmt.Printf("Dispatching task to worker: %+v\n", task)
 			}
 
+			// Update state
+			task.Callback.TaskCallback(
+				&pupupu.TaskResult{
+					Status: pupupu.StatusDispatched,
+					Result: nil,
+					Task:   task,
+				},
+			)
+
 			// Find worker for task
 			worker, err := m.GetWorker(task.Task.Type)
 
@@ -705,4 +714,82 @@ func (m *NailsMaster) GetJobDataReader(id string) pupupu.JobDataReader {
 
 	// Not Job
 	return nil
+}
+
+func (m *NailsMaster) DeleteTask(id string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if !m.isOpen {
+		return errors.New("NailsMaster has a day-off")
+	}
+
+	// Try find tassk & related jobs
+	if has, err := m.kvs.Has(id); !has || (err != nil) {
+		// Not existing
+		return errors.New("Task does not exist")
+	}
+
+	item, err := m.kvs.Get(id)
+	if err != nil {
+		return err
+	}
+
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if kvsItem.Type == KVSItemTypeTask {
+		// Ensure that task is not busy
+		if kvsItem.Status == pupupu.StatusDispatched || kvsItem.Status == pupupu.StatusUndefined {
+			return errors.New("Task is busy")
+		}
+
+		var superErr error
+
+		// Drop each Job
+		for _, jobId := range kvsItem.JobIds {
+			err := m.deleteJob(jobId)
+			superErr = errors.Join(superErr, err)
+		}
+
+		// Finally drop Task Storage
+		err = m.storage.DeleteBy(id, "")
+		superErr = errors.Join(superErr, err)
+
+		// Finally drop Task KVS
+		err := m.kvs.Remove(id)
+		superErr = errors.Join(superErr, err)
+
+		return superErr
+	}
+
+	return errors.New("Entity is not a Task")
+}
+
+func (m *NailsMaster) deleteJob(id string) error {
+	// Try find tassk & related jobs
+	if has, err := m.kvs.Has(id); !has || (err != nil) {
+		// Not existing
+		return errors.New("Task does not exist")
+	}
+
+	item, err := m.kvs.Get(id)
+	if err != nil {
+		return err
+	}
+
+	kvsItem := UnsafeConvertToKVSItem(item)
+	if kvsItem.Type == KVSItemTypeJob {
+		var superErr error
+
+		// Drop Job Storage
+		err = m.storage.DeleteBy(id, "")
+		superErr = errors.Join(superErr, err)
+
+		// Drop Job KVS
+		err := m.kvs.Remove(id)
+		superErr = errors.Join(superErr, err)
+
+		return superErr
+	}
+
+	return errors.New("Entity is not a Task")
 }

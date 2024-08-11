@@ -3,6 +3,9 @@ package pupupu
 // Status: undefined state
 const StatusUndefined = "UNDEFINED"
 
+// Status: task dispatched to worker
+const StatusDispatched = "DISPATCHED"
+
 // Status: completed state
 const StatusComplete = "COMPLETE"
 

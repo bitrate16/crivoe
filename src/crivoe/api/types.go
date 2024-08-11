@@ -44,3 +44,7 @@ type HTTPTaskMetadata struct {
 	Status   string      `json:"status"`
 	Metadata interface{} `json:"metadata"`
 }
+
+type HTTPDeleted struct {
+	Id string `json:"id"`
+}

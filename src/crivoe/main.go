@@ -190,7 +190,7 @@ func job_status(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(jobStatus)
 }
 
-// GET Metadata of scrape result
+// GET Metadata of Task scrape result
 func task_metadata(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "GET" {
 		http.Error(w, "Method not supported", http.StatusBadRequest)
@@ -219,7 +219,7 @@ func task_metadata(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(metadata)
 }
 
-// GET Metadata of scrape result
+// GET Metadata of Job scrape result
 func job_metadata(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "GET" {
 		http.Error(w, "Method not supported", http.StatusBadRequest)
@@ -248,7 +248,7 @@ func job_metadata(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(metadata)
 }
 
-// GET Metadata of scrape result
+// GET Data of Job scrape result
 func job_data(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "GET" {
 		http.Error(w, "Method not supported", http.StatusBadRequest)
@@ -286,6 +286,37 @@ func job_data(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// DELETE Task and all Jobs with Storage and KVS
+func task_delete(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "DELETE" {
+		http.Error(w, "Method not supported", http.StatusBadRequest)
+		return
+	}
+
+	if !req.URL.Query().Has("id") {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	id := req.URL.Query().Get("id")
+
+	err := master.DeleteTask(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var response api.HTTPDeleted
+	response.Id = id
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+func registerWorkers(m *pupupu_impl.NailsMaster, args *config.Config) {
+	m.RegisterWorker("debug", &worker.DebugWorker{})
+	m.RegisterWorker("url", worker.NewUrlWorker(args.Debug))
+}
+
 func main() {
 	rand.Seed(uint64(time.Now().UnixNano()))
 
@@ -303,10 +334,7 @@ func main() {
 	master = pupupu_impl.NewNailsMaster(args.StoragePath, args.MemoryMode, args.Debug)
 
 	// Register workers
-	worker.SetDebug(args.Debug)
-	for key, value := range worker.GetRegistry() {
-		master.RegisterWorker(key, value)
-	}
+	registerWorkers(master, args)
 
 	// Master lifecycle
 	err := master.Start()
@@ -332,6 +360,7 @@ func main() {
 	mux.HandleFunc("/task_metadata", task_metadata)
 	mux.HandleFunc("/job_metadata", job_metadata)
 	mux.HandleFunc("/job_data", job_data)
+	mux.HandleFunc("/task_delete", task_delete)
 
 	// Start it
 	address := args.Host + ":" + strconv.Itoa(args.Port)
