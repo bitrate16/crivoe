@@ -106,10 +106,10 @@ func create(w http.ResponseWriter, req *http.Request) {
 
 	var taskSpecHTTP api.HTTPTaskSpec
 	taskSpecHTTP.Id = taskSpec.Id
-	taskSpecHTTP.JobIds = make([]string, 0)
+	taskSpecHTTP.Jobs = make([]string, 0)
 
 	for _, jobSpec := range taskSpec.JobSpecs {
-		taskSpecHTTP.JobIds = append(taskSpecHTTP.JobIds, jobSpec.Id)
+		taskSpecHTTP.Jobs = append(taskSpecHTTP.Jobs, jobSpec.Id)
 
 		if args.Log {
 			fmt.Printf("Job Created: %s\n", jobSpec.Id)

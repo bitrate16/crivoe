@@ -20,8 +20,8 @@ type HTTPTask struct {
 }
 
 type HTTPTaskSpec struct {
-	Id     string   `json:"id"`
-	JobIds []string `json:"job_ids"`
+	Id   string   `json:"id"`
+	Jobs []string `json:"jobs"`
 }
 
 type HTTPJobSpec struct {
