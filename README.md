@@ -55,3 +55,4 @@ Reference: [types.go](src/crivoe/api/types.go)
 * Parallel downloader worker
 * Delete storage data on TTL
 * Allow cancel tasks
+* List Tasks
