@@ -312,6 +312,20 @@ func task_delete(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// GET List of Task IDs
+func task_list(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "GET" {
+		http.Error(w, "Method not supported", http.StatusBadRequest)
+		return
+	}
+
+	var response api.HTTPTaskIdList
+	response.Tasks = master.ListTaskId()
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
 func registerWorkers(m *pupupu_impl.NailsMaster, args *config.Config) {
 	m.RegisterWorker("debug", &worker.DebugWorker{})
 	m.RegisterWorker("url", worker.NewUrlWorker(args.Debug))
@@ -361,6 +375,7 @@ func main() {
 	mux.HandleFunc("/job_metadata", job_metadata)
 	mux.HandleFunc("/job_data", job_data)
 	mux.HandleFunc("/task_delete", task_delete)
+	mux.HandleFunc("/task_list", task_list)
 
 	// Start it
 	address := args.Host + ":" + strconv.Itoa(args.Port)

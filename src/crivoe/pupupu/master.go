@@ -17,6 +17,8 @@ type Master interface {
 	// Delete task & all related jobs records & data
 	DeleteTask(id string) error
 
+	ListTaskId() []string
+
 	// Returns KVS of Master, must not be accessed by anyone except workers
 	GetKVS() kvs.KVS
 

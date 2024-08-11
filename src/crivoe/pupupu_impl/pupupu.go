@@ -297,7 +297,7 @@ func (m *NailsMaster) getStatusForId(id string, expectedType KVSItemType) (strin
 
 	kvsItem := UnsafeConvertToKVSItem(item)
 	if expectedType != KVSItemTypeUndefined && kvsItem.Type != expectedType {
-		return "", fmt.Errorf("Entity type %s does not match expected %s", KVSItemTypeToString(kvsItem.Type), KVSItemTypeToString(expectedType))
+		return "", fmt.Errorf("Entity type %s does not match expected %s\n", KVSItemTypeToString(kvsItem.Type), KVSItemTypeToString(expectedType))
 	}
 
 	return kvsItem.Status, nil
@@ -316,7 +316,7 @@ func (m *NailsMaster) setStatusForId(id string, status string, expectedType KVSI
 
 	kvsItem := UnsafeConvertToKVSItem(item)
 	if expectedType != KVSItemTypeUndefined && kvsItem.Type != expectedType {
-		return fmt.Errorf("Entity type %s does not match expected %s", KVSItemTypeToString(kvsItem.Type), KVSItemTypeToString(expectedType))
+		return fmt.Errorf("Entity type %s does not match expected %s\n", KVSItemTypeToString(kvsItem.Type), KVSItemTypeToString(expectedType))
 	}
 
 	// Patch status
@@ -792,4 +792,41 @@ func (m *NailsMaster) deleteJob(id string) error {
 	}
 
 	return errors.New("Entity is not a Task")
+}
+
+func (m *NailsMaster) ListTaskId() []string {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if !m.isOpen {
+		return nil
+	}
+
+	ids := make([]string, 0)
+
+	iterator := m.kvs.KeyIterator()
+	for {
+		id, has := iterator.Next()
+		if !has {
+			break
+		}
+
+		if has, err := m.kvs.Has(id); !has || (err != nil) {
+			fmt.Printf("Entry %s not found in KVS", id)
+			return nil
+		}
+
+		item, err := m.kvs.Get(id)
+		if err != nil {
+			fmt.Printf("Get Entry %s from KVS Error: %v\n", id, err)
+			return nil
+		}
+
+		kvsItem := UnsafeConvertToKVSItem(item)
+		if kvsItem.Type == KVSItemTypeTask {
+			ids = append(ids, kvsItem.Id)
+		}
+	}
+
+	return ids
 }

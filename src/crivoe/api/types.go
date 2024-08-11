@@ -48,3 +48,7 @@ type HTTPTaskMetadata struct {
 type HTTPDeleted struct {
 	Id string `json:"id"`
 }
+
+type HTTPTaskIdList struct {
+	Tasks []string `json:"tasks"`
+}
